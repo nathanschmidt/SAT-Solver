@@ -1,6 +1,11 @@
 Require Import ProjectLib.
 
-(* Syntax *)
+(* ########################### *)
+(** * Syntax *)
+(* ########################### *)
+
+(** ** Abstract Syntax Tree *)
+
 Inductive form : Type :=
     | form_var (x : id)
     | form_bool (b : bool)
@@ -9,7 +14,8 @@ Inductive form : Type :=
     | form_impl (p : form) (q : form)
     | form_neg (p : form).
 
-(* Concrete Syntax *)
+(** ** Concrete Syntax *)
+
 (* difficulty: remember notation as always in template usually *)
 Coercion form_var : id >-> form.
 Declare Custom Entry form. (* difficult finding out why this is more powerful compared to Declare Scope *)
@@ -34,6 +40,8 @@ Hint Unfold x : core.
 Hint Unfold y : core.
 Hint Unfold z : core.
 
+(** ** Examples *)
+
 Definition syntax_example : form :=
     <{ ~x \/ true \/ z /\ y -> z }>.
 Unset Printing Notations.
@@ -52,7 +60,12 @@ Definition concrete_syntax_example3 : form :=
     form_conj (form_conj x (form_neg x)) (form_bool true).
 Print concrete_syntax_example3.
 
-(* Semantics *)
+(* ########################### *)
+(** * Semantics *)
+(* ########################### *)
+
+(** ** Valuation *)
+
 Definition valuation : Type := id -> bool .
 Definition empty_valuation : valuation := fun x => false.
 Definition override (V : valuation) (x : id) (b : bool) : valuation :=
@@ -68,6 +81,8 @@ Unset Printing Notations.
 Print valuation_example.
 Set Printing Notations.
 
+(** ** Interpreter *)
+
 Fixpoint interp (V : valuation) (p : form) : bool :=
     match p with
     | form_var x => V x
@@ -77,7 +92,11 @@ Fixpoint interp (V : valuation) (p : form) : bool :=
     | <{ p \/ q }> => (interp V p) || (interp V q)
     | <{ p -> q }> => (negb (interp V p)) || (interp V q)
     | <{ ~p }> => negb (interp V p)
-    end.    
+    end.
+
+(* ########################### *)
+(** * Optimizer *)
+(* ########################### *)
 
 (* Difficulty: first wrote all cases for and, or and impl directly without pattern matching on the optimized version, leaving out potential for
    optimization and therefore trying the apply_optim fixpoint which is not possible in Coq. *)
@@ -132,6 +151,8 @@ Fixpoint optim (p : form) : form :=
     else
         apply_optim (p_opt). *)
 
+(** ** Correctness *)
+
 Hint Resolve andb_true_r : core.
 Hint Resolve andb_false_r : core.
 Hint Resolve orb_true_r : core.
@@ -145,51 +166,6 @@ Ltac destruct_if b q :=
     destruct b; rw;
     [ reflexivity |
       destruct q; try destruct b; reflexivity]. 
-
-(* Approach: first manual proofs of whole project, then automization., then Ltac *)
-Theorem optim_correct_old : forall V p,
-    interp V p = interp V (optim p).
-Proof.
-    induction p as [x | b | q IHq q' IHq' | q IHq q' IHq' | q IHq q' IHq' |
-                    q IHq]; 
-    try reflexivity.
-    - simpl. destruct (optim q) as [x | b | q_opt1 q_opt2 | q_opt1 q_opt2 |
-                                    q_opt1 q_opt2 | q_opt];
-      try (destruct (optim q') as [x' | b' | q'_opt1 q'_opt2 | q'_opt1 q'_opt2 |
-                                  q'_opt1 q'_opt2 | q'_opt];
-          try (simpl in *; rewrite IHq, IHq'; reflexivity);
-          destruct b'; rewrite IHq, IHq'; auto).
-        + destruct_if b (optim q').
-    - simpl. destruct (optim q) as [x | b | q_opt1 q_opt2 | q_opt1 q_opt2 |
-                                    q_opt1 q_opt2 | q_opt];
-        try (destruct (optim q') as [x' | b' | q'_opt1 q'_opt2 | q'_opt1 q'_opt2 |
-                                  q'_opt1 q'_opt2 | q'_opt];
-          try destruct b';
-          simpl in *; rewrite IHq, IHq'; auto;
-        try (destruct b; 
-            [simpl in *; rewrite IHq, IHq'; reflexivity |
-             destruct (optim q'); try destruct b;
-              rewrite IHq, IHq'; reflexivity]);
-        destruct (optim q') as [x' | b' | q'_opt1 q'_opt2 | q'_opt1 q'_opt2 |
-                                  q'_opt1 q'_opt2 | q'_opt];
-          try destruct b';
-          simpl in *; rewrite IHq, IHq'; auto).
-        + destruct_if b (optim q').
-    - simpl. destruct (optim q) as [x | b | q_opt1 q_opt2 | q_opt1 q_opt2 |
-                                    q_opt1 q_opt2 | q_opt];
-      try (destruct b; 
-            [simpl in *; rewrite IHq, IHq'; reflexivity |
-             destruct (optim q'); try destruct b;
-              rewrite IHq, IHq'; reflexivity]);
-        destruct (optim q') as [x' | b' | q'_opt1 q'_opt2 | q'_opt1 q'_opt2 |
-                                  q'_opt1 q'_opt2 | q'_opt];
-          try destruct b';
-          simpl in *; rewrite IHq, IHq'; auto.
-    - simpl. destruct (optim q) as [x | b | q_opt1 q_opt2 | q_opt1 q_opt2 |
-                                    q_opt1 q_opt2 | q_opt];
-        try destruct b;
-        rewrite IHq; reflexivity.
-    Qed.
 
 (* TODO: make look nicer *)
 Theorem optim_correct : forall V p,
@@ -209,18 +185,7 @@ Proof.
     simpl in *; rewrite IHq, IHq'; auto.
     Qed.
 
-(* Quite some blow-up in proof*)
-(* Inductive contains_no_atoms : form -> Prop :=
-    | cna_var : forall x,
-        contains_no_atoms (form_var x)
-    | cna_cdi : forall f p q,
-        f = <{ p /\ q }> \/ f = <{ p \/ q }> \/ f = <{ p -> q }> ->
-        contains_no_atoms p ->
-        contains_no_atoms q ->
-        contains_no_atoms f
-    | cna_neg : forall p,
-        contains_no_atoms p ->
-        contains_no_atoms <{ ~p }>. *)
+(** ** Completeness *)
 
 Fixpoint contains_no_atoms (f : form) : bool :=
     match f with
@@ -238,15 +203,19 @@ Lemma if_same : forall (X : Type) (b : bool) (x : X),
     (if b then x else x) = x.
 Proof. intros X b x. destruct b; reflexivity. Qed.
 
+(* Idea: theorem proving that this is the simplest form 
+    check if predicate valid, with predicate being certain constructs not contained in form 
+    i.e. either only true or false or no atoms (true or false) contained *)
+(* TODO: reduce proof size further *)
 Theorem optim_minimizes : forall (f : form),
     minimal_form (optim f).
 Proof.
     intros f.
     induction f as [x | b | p IHp q IHq | p IHp q IHq | 
                             p IHp q IHq | p IHp];
-    unfold minimal_form.
-    - right. reflexivity.
-    - left. exists b. reflexivity.
+    unfold minimal_form;
+    (* form_bool b *) try (right; reflexivity);
+    (* form_var x *) try (left; exists b; reflexivity).
     - destruct IHp as [IHp | IHp]; destruct IHq as [IHq | IHq];
       simpl;
       try (destruct IHp as [bp IHp]; rewrite IHp; clear IHp;
@@ -292,58 +261,4 @@ Proof.
         + right. simpl. destruct (optim p); 
           simpl in *; try discriminate; assumption.
     Qed.
-
-(* Theorem optim_minimizes : forall (f : form),
-    minimal_form (optim f).
-Proof.
-    intros f.
-    induction f as [x | b | p IHp q IHq | p IHp q IHq | 
-                            p IHp q IHq | p IHp];
-    unfold minimal_form.
-    - right. constructor.
-    - left. exists b. reflexivity.
-    - destruct IHp as [IHp | IHp].
-        + destruct IHq as [IHq | IHq].
-            * left. simpl. 
-              destruct IHp as [bp IHp]. destruct bp.
-              -- rewrite IHp. assumption.
-              -- rewrite IHp. destruct (optim q); 
-                 try rewrite if_same; exists false;
-                 reflexivity.
-            * simpl. destruct IHp as [bp IHp].
-              rewrite IHp. destruct bp.
-              -- right. assumption.
-              -- left. destruct (optim q);
-                 try rewrite if_same; exists false;
-                 reflexivity.
-        + destruct IHq as [IHq | IHq].
-            * destruct IHq as [bq IHq]. destruct bq.
-                -- simpl. rewrite IHq. destruct (optim p); auto.
-                   left. destruct b; [exists true | exists false];
-                   reflexivity.
-                -- left. simpl. rewrite IHq. destruct (optim p);
-                try rewrite if_same; exists false;
-                 reflexivity.
-            * right. simpl. inversion IHp.
-                -- inversion IHq.
-                    ++ econstructor.
-                        ** left. reflexivity.
-                        ** constructor.
-                        ** constructor.
-                    ++ destruct H as [H | [H | H]]; rewrite H;
-                       econstructor;
-                       try (left; reflexivity);
-                       econstructor;
-                       try (left; reflexivity);
-                       try (right; left; reflexivity);
-                       try (right; right; reflexivity);
-                       assumption.
-                    ++ econstructor.
-                        ** left. reflexivity.
-                        ** constructor.
-                        **  *)
-
-(* Idea: theorem proving that this is the simplest form 
-    check if predicate valid, with predicate being certain constructs not contained in form 
-    i.e. either only true or false or no atoms (true or false) contained *)
 
