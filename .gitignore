@@ -33,6 +33,10 @@ nia.cache
 nlia.cache
 nra.cache
 
+## coqdoc
+*.html
+*.css
+
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof

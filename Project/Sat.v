@@ -187,6 +187,7 @@ Proof.
 
 (** ** Completeness *)
 
+(* TODO: rewrite as equations ? *)
 Fixpoint contains_no_atoms (f : form) : bool :=
     match f with
     | form_var _ => true
@@ -196,9 +197,25 @@ Fixpoint contains_no_atoms (f : form) : bool :=
     | _ => false
     end.
 
+(* underlines optimizer syntax-driven *)
+Lemma optim_no_atoms_same : forall (f : form),
+    contains_no_atoms f = true -> optim f = f.
+Proof.
+    intros f H.
+    induction f as [x | b | p IHp q IHq | p IHp q IHq | 
+                            p IHp q IHq | p IHp];
+    simpl in *; 
+    try (apply andb_prop in H; destruct H as [Hp Hq];
+         apply IHp in Hp; apply IHq in Hq;
+         rewrite Hp; rewrite Hq; simpl).
+    - reflexivity.
+    - reflexivity.
+    Admitted.
+
 Definition minimal_form (f : form) : Prop :=
     (exists b, f = form_bool b) \/ contains_no_atoms f = true.
 
+(* helper lemma *)
 Lemma if_same : forall (X : Type) (b : bool) (x : X),
     (if b then x else x) = x.
 Proof. intros X b x. destruct b; reflexivity. Qed.
@@ -207,6 +224,10 @@ Proof. intros X b x. destruct b; reflexivity. Qed.
     check if predicate valid, with predicate being certain constructs not contained in form 
     i.e. either only true or false or no atoms (true or false) contained *)
 (* TODO: reduce proof size further *)
+(* ++ 
+TODO!!! 
+++ 
+check if proof length can be reduced further by using optim_same_no_atoms lemma *)
 Theorem optim_minimizes : forall (f : form),
     minimal_form (optim f).
 Proof.
