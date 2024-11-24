@@ -6,7 +6,8 @@ Foundations by Benjamin Pierce and others. *)
 
 Require Export Bool.
 Require Export List.
-Export ListNotations.
+Export ListNotations. (* Lots of struggle with this: wrong error message
+for append caused by this, see https://chatgpt.com/c/674392d2-50f0-8013-bde7-1ee91d8c3c33 *)
 Require Export Arith.
 Require Export NPeano.
 Require Export Arith.EqNat.  (* Contains [beq_nat], among other things *)
@@ -81,4 +82,10 @@ Inductive id : Type :=
 Definition eqb_id (x y : id) : bool :=
   match x, y with
   | Id x, Id y => String.eqb x y
+  end.
+
+Definition is_some {A : Type} (x : option A) :=
+  match x with
+  | Some _ => true
+  | None => false
   end.

@@ -1,4 +1,7 @@
 Require Import ProjectLib.
+Import List. (* dont' know why necessary, otherwise strange error.... *)
+
+(* TODO: change all functions to use (f : form), not (p : form) *)
 
 (* ########################### *)
 (** * Syntax *)
@@ -83,8 +86,8 @@ Set Printing Notations.
 
 (** ** Interpreter *)
 
-Fixpoint interp (V : valuation) (p : form) : bool :=
-    match p with
+Fixpoint interp (V : valuation) (f : form) : bool :=
+    match f with
     | form_var x => V x
     | <{ true }> => true
     | <{ false }> => false
@@ -197,20 +200,35 @@ Fixpoint contains_no_atoms (f : form) : bool :=
     | _ => false
     end.
 
+Inductive contains_no_atoms' : form -> Prop :=
+  | cna_var : forall (x : id),
+      contains_no_atoms' <{ x }>
+  | cna_cdi : forall (f p q : form),
+      f = <{ p /\ q }> \/ f = <{ p \/ q }> \/ f = <{ p -> q }> ->
+      contains_no_atoms' p ->
+      contains_no_atoms' q ->
+      contains_no_atoms' f
+  | cna_neg : forall (p : form),
+      contains_no_atoms' p ->
+      contains_no_atoms' <{ ~p }>.
+
+(* TODO: Fixpoint and inductive equivalent or reprove optim_minimizes *)
+
 (* underlines optimizer syntax-driven *)
 Lemma optim_no_atoms_same : forall (f : form),
-    contains_no_atoms f = true -> optim f = f.
+    contains_no_atoms' f -> optim f = f.
 Proof.
-    intros f H.
-    induction f as [x | b | p IHp q IHq | p IHp q IHq | 
-                            p IHp q IHq | p IHp];
-    simpl in *; 
-    try (apply andb_prop in H; destruct H as [Hp Hq];
-         apply IHp in Hp; apply IHq in Hq;
-         rewrite Hp; rewrite Hq; simpl).
-    - reflexivity.
-    - reflexivity.
-    Admitted.
+  intros f H. induction H as [x | f p q Hf Hp IHp Hq IHq | p Hp IHp].
+  - reflexivity.
+  - destruct Hf as [Hf | [Hf | Hf]]; rewrite Hf; clear Hf;
+    simpl; rewrite IHp; clear IHp; rewrite IHq; clear IHq;
+    inversion Hp as [xp Hxp | pf p1 p2 Hpf Hp1 Hp2 | p' Hp'];
+    inversion Hq as [xq Hxq | qf q1 q2 Hqf Hq1 Hq2 | q' Hq'];
+    try destruct Hpf as [Hpf | [Hpf | Hpf]];
+    try destruct Hqf as [Hqf | [Hqf | Hqf]]; subst; reflexivity.
+  - simpl. rewrite IHp. destruct p; try reflexivity.
+    inversion Hp. destruct H as [H | [H | H]]; inversion H.
+  Qed.
 
 Definition minimal_form (f : form) : Prop :=
     (exists b, f = form_bool b) \/ contains_no_atoms f = true.
@@ -283,3 +301,98 @@ Proof.
           simpl in *; try discriminate; assumption.
     Qed.
 
+(* ########################### *)
+(** * Satisfiability *)
+(* ########################### *)
+
+Definition satisfiable (p : form) : Prop :=
+  exists (V : valuation), interp V p = true.
+
+Lemma satisfiable_test1 : satisfiable <{ (x \/ ~y) /\ (~x \/ y) }>.
+Proof. exists (x !-> true ; y !-> true). reflexivity. Qed.
+
+Lemma satisfiable_test2 : satisfiable <{ ~y -> (x \/ y) }>.
+Proof. exists (y !-> true). reflexivity. Qed.
+
+(* Don't care about of vars in resulting list, just need to be all unique *)
+Fixpoint ids_union (l1 l2 : list id) :=
+  match l1 with
+  | [] => l2
+  | hd :: tl =>
+    if (List.find (fun x => eqb_id x hd) l2)
+      then ids_union tl l2
+    else
+      ids_union tl (hd :: l2)
+  end.
+
+Example ids_union_example1 : ids_union [x; y; z] [x; y] = [z; x; y].
+Proof. reflexivity. Qed.
+
+Example ids_union_example2 : 
+  ids_union [x; y; z] [Id "a"; Id "b"] = [z; y; x; Id "a"; Id "b"].
+Proof. reflexivity. Qed.
+
+Print Option.has_some.
+
+(* TODO: Think about if want to prove some properties showing ids_union correct *)
+
+(* Abandonned idea: directly collect valuations instead of variables
+   Problem: in e.g. (x \/ x) for the left and the right we get the same valuations,
+   but we combine them to actually 4 instead of just 2 valuations.
+   For success that's fine I guess, that makes us check twice the same stuff
+   even if no valuation exists. 
+   Considered sets, but didn't want to include extra library, so implemented
+   this list merging function *)
+Definition find_valuation (f : form) : option valuation :=
+  let optim_f := optim f in
+  let vars :=
+    (fix collect_vars (f : form) : list id :=
+      match f with
+      | form_var x => [x]
+      | <{ p /\ q }> | <{ p \/ q }> | <{ p -> q }> => 
+        ids_union (collect_vars p) (collect_vars q)
+      | <{ ~p }> => collect_vars p
+      | _ => []
+      end) optim_f in
+  let valuations :=
+    (* works because empty valuations maps all to false *)
+    (fix collect_valuations (l : list id) (acc : list valuation) : list valuation :=
+      match l with
+      | [] => acc
+      | x :: xs => collect_valuations xs ((map (fun v => x !-> true ; v) acc) ++ acc)
+      end) vars [empty_valuation] in
+  (* doesn't work as interp keeps no trace of v but just says true or false*)
+  (* find is_some (map (fun v => interp v optim_f) valuations). *)
+  (* Also following solutions better runtime as stops as soon as one found *)
+  (fix check_valuations (l : list valuation) : option valuation :=
+    match l with
+    | [] => None
+    | v :: vs => 
+      if interp v optim_f
+        then Some v
+      else
+        check_valuations vs
+    end) valuations.
+
+Definition solver (f : form) : bool :=
+  match find_valuation f with
+  | Some _ => true
+  | None => false
+  end.
+
+(* TODO (in report?): exercise 2.6 *)
+
+Example solver_pos_test1 : solver <{ (x \/ ~y) /\ (~x \/ y) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_pos_test2 : solver <{ ~y -> (x \/ y) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_pos_test3 : solver <{ ((x -> y) \/ (x /\ ~x)) /\ (y /\ z) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_neg_test1 : solver <{ x /\ ~x }> = false.
+Proof. reflexivity. Qed. 
+
+Example solver_neg_test2 : solver <{ (y -> x) /\ ~x /\ y /\ z }> = false.
+Proof. reflexivity. Qed.
