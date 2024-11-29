@@ -84,6 +84,13 @@ Definition eqb_id (x y : id) : bool :=
   | Id x, Id y => String.eqb x y
   end.
 
+Lemma eqb_id_refl : forall (x : id),
+  eqb_id x x = true.
+Proof.
+  intros x. destruct x. 
+  simpl. rewrite eqb_eq. reflexivity.
+  Qed.
+
 Definition is_some {A : Type} (x : option A) :=
   match x with
   | Some _ => true

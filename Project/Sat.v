@@ -1,4 +1,6 @@
-Require Import ProjectLib.
+(* coq platform docs coq.inria.fr/platform-docs *)
+
+Require Import ProjectLib. (* checked if export help with Bas, didn't make a difference *)
 Import List. (* dont' know why necessary, otherwise strange error.... *)
 
 (* TODO: change all functions to use (f : form), not (p : form) *)
@@ -83,6 +85,14 @@ Definition valuation_example :=
 Unset Printing Notations.
 Print valuation_example.
 Set Printing Notations.
+
+(* from Maps chapter of LF *)
+Lemma update_eq : forall (V : valuation) (x : id) (b : bool),
+  (x !-> b ; V) x = b.
+Proof.
+  intros V x b. unfold override. 
+  rewrite eqb_id_refl. reflexivity.
+  Qed.
 
 (** ** Interpreter *)
 
@@ -302,8 +312,10 @@ Proof.
     Qed.
 
 (* ########################### *)
-(** * Satisfiability *)
+(** * Solver *)
 (* ########################### *)
+
+(** ** Satisfiability *)
 
 Definition satisfiable (p : form) : Prop :=
   exists (V : valuation), interp V p = true.
@@ -314,7 +326,7 @@ Proof. exists (x !-> true ; y !-> true). reflexivity. Qed.
 Lemma satisfiable_test2 : satisfiable <{ ~y -> (x \/ y) }>.
 Proof. exists (y !-> true). reflexivity. Qed.
 
-(* Don't care about of vars in resulting list, just need to be all unique *)
+(* Don't care about order of vars in resulting list, just need to be all unique *)
 Fixpoint ids_union (l1 l2 : list id) :=
   match l1 with
   | [] => l2
@@ -332,9 +344,35 @@ Example ids_union_example2 :
   ids_union [x; y; z] [Id "a"; Id "b"] = [z; y; x; Id "a"; Id "b"].
 Proof. reflexivity. Qed.
 
-Print Option.has_some.
+(** ** Solver *)
 
 (* TODO: Think about if want to prove some properties showing ids_union correct *)
+
+(* Helper functions *)
+Fixpoint collect_vars (f : form) : list id :=
+  match f with
+  | form_var x => [x]
+  | <{ p /\ q }> | <{ p \/ q }> | <{ p -> q }> => 
+    ids_union (collect_vars p) (collect_vars q)
+  | <{ ~p }> => collect_vars p
+  | _ => []
+  end.
+
+Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuation :=
+  match l with
+  | [] => acc
+  | x :: xs => collect_valuations xs ((map (fun v => x !-> true ; v) acc) ++ acc)
+  end.
+
+Fixpoint check_valuations (f : form) (l : list valuation) : option valuation :=
+  match l with
+  | [] => None
+  | v :: vs => 
+    if interp v f
+      then Some v
+    else
+      check_valuations f vs
+  end.
 
 (* Abandonned idea: directly collect valuations instead of variables
    Problem: in e.g. (x \/ x) for the left and the right we get the same valuations,
@@ -345,34 +383,19 @@ Print Option.has_some.
    this list merging function *)
 Definition find_valuation (f : form) : option valuation :=
   let optim_f := optim f in
-  let vars :=
-    (fix collect_vars (f : form) : list id :=
-      match f with
-      | form_var x => [x]
-      | <{ p /\ q }> | <{ p \/ q }> | <{ p -> q }> => 
-        ids_union (collect_vars p) (collect_vars q)
-      | <{ ~p }> => collect_vars p
-      | _ => []
-      end) optim_f in
-  let valuations :=
-    (* works because empty valuations maps all to false *)
-    (fix collect_valuations (l : list id) (acc : list valuation) : list valuation :=
-      match l with
-      | [] => acc
-      | x :: xs => collect_valuations xs ((map (fun v => x !-> true ; v) acc) ++ acc)
-      end) vars [empty_valuation] in
+  let vars := collect_vars optim_f in
+  let valuations := collect_valuations vars [empty_valuation] in
   (* doesn't work as interp keeps no trace of v but just says true or false*)
   (* find is_some (map (fun v => interp v optim_f) valuations). *)
   (* Also following solutions better runtime as stops as soon as one found *)
-  (fix check_valuations (l : list valuation) : option valuation :=
-    match l with
-    | [] => None
-    | v :: vs => 
-      if interp v optim_f
-        then Some v
-      else
-        check_valuations vs
-    end) valuations.
+  check_valuations optim_f valuations.
+
+Lemma find_valuation_disj : forall (p q : form) (v : valuation),
+  find_valuation <{ p /\ q }> = Some v ->
+  exists (vp vq : valuation), 
+    find_valuation p = Some vp /\ find_valuation q = Some vq.
+Proof.
+  intros p q v H.
 
 Definition solver (f : form) : bool :=
   match find_valuation f with
@@ -396,3 +419,26 @@ Proof. reflexivity. Qed.
 
 Example solver_neg_test2 : solver <{ (y -> x) /\ ~x /\ y /\ z }> = false.
 Proof. reflexivity. Qed.
+
+Lemma solver_sound : forall (f : form),
+  solver f = true -> satisfiable f.
+Proof.
+  intros f H. unfold solver in H. 
+  destruct (find_valuation f) eqn:Efv; [clear H | discriminate H].
+  exists v. unfold find_valuation in Efv.
+  unfold check_valuations in Efv.
+  (* We know check_valuations returns Some v, but it only does so
+     if interp v f = true.
+     Therefore, given list of valuations, either the head is the 
+     returned valuation or some valuation in the tail.
+     Correctness of encapsulated functions doesn't matter,
+     can just do case distinction and see them as black box *)
+  induction 
+  (collect_valuations (collect_vars (optim f)) [empty_valuation])
+  as [| v' vs' IHvs'].
+  - discriminate Efv.
+  - destruct (interp v' (optim f)) eqn:Eiv'.
+    + injection Efv. intros Evv'. subst.
+      rewrite <- optim_correct in Eiv'. exact Eiv'.
+    + apply IHvs'. exact Efv.
+  Qed.
