@@ -358,6 +358,18 @@ Fixpoint collect_vars (f : form) : list id :=
   | _ => []
   end.
 
+(* Can e.g. prove that p op q and x in either will end up in collect_vars of p op q *)
+
+(* Don't know if that is useful *)
+Lemma no_atoms_not_empty : forall (f : form),
+  contains_no_atoms' f -> collect_vars f <> [].
+Proof.
+  intros f H. induction H; intros contra. (* TODO: write cases properly *)
+  - discriminate contra.
+  - destruct H as [Hf | [Hf | Hf]]; subst; simpl in contra;
+    unfold ids_union in contra.
+  Admitted.
+
 Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuation :=
   match l with
   | [] => acc
@@ -389,13 +401,6 @@ Definition find_valuation (f : form) : option valuation :=
   (* find is_some (map (fun v => interp v optim_f) valuations). *)
   (* Also following solutions better runtime as stops as soon as one found *)
   check_valuations optim_f valuations.
-
-Lemma find_valuation_disj : forall (p q : form) (v : valuation),
-  find_valuation <{ p /\ q }> = Some v ->
-  exists (vp vq : valuation), 
-    find_valuation p = Some vp /\ find_valuation q = Some vq.
-Proof.
-  intros p q v H.
 
 Definition solver (f : form) : bool :=
   match find_valuation f with
@@ -442,3 +447,46 @@ Proof.
       rewrite <- optim_correct in Eiv'. exact Eiv'.
     + apply IHvs'. exact Efv.
   Qed.
+
+(* Lemma no_atoms_v_in_collect_valuations : forall (v : valuation) (f : form),
+  interp v f = true ->
+  exists (v' : valuation), 
+    In v' (collect_valuations (collect_vars f) [empty_valuation]) /\
+    forall (x : id), In x (collect_vars f) -> v x = v' x.
+Proof.
+  intros v f.
+  induction f as [x | b | p IHp q IHq | p IHp q IHq | 
+                            p IHp q IHq | p IHp];
+  intros H; simpl.
+  - exists (x !-> true). split.
+    + left. reflexivity.
+    + intros x' [Hx | Hx].
+      * simpl in H. subst. rewrite H. rewrite update_eq. reflexivity.
+      * inversion Hx.
+  - exists empty_valuation. split.
+    + left. reflexivity.
+    + intros x Hx. inversion Hx.
+  - simpl in H. apply andb_prop in H. destruct H as [Hp Hq].
+    apply IHp in Hp. destruct Hp as [vp Hp]. 
+    apply IHq in Hq. destruct Hq as [vq Hq].
+    simpl in *. *)
+
+(* Difficulty: quite easy to find proof outline informally, but how to formalize?*)
+Lemma solver_complete : forall (f : form),
+  satisfiable f -> solver f = true.
+Proof. 
+  intros f H. unfold solver. 
+  destruct (find_valuation f) eqn:Efv; [reflexivity | idtac].
+  destruct H as [v H]. unfold find_valuation in Efv.
+  unfold check_valuations in Efv.
+  rewrite optim_correct in H. 
+  (* assert (Hoptf : minimal_form (optim f)). { apply optim_minimizes. }
+  destruct Hoptf as [[b Hopft] | Hoptf].
+  - destruct b; rewrite Hopft in H, Efv; simpl in Efv; discriminate.
+  -  *)
+  Admitted.
+
+Theorem solver_true_iff_satisfiable : forall (f : form),
+  solver f = true <-> satisfiable f.
+Proof. intros f. split; [apply solver_sound | apply solver_complete]. Qed.
+
