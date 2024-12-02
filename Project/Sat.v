@@ -309,7 +309,7 @@ Proof.
           destruct bp; [exists false | exists true]; reflexivity.
         + right. simpl. destruct (optim p); 
           simpl in *; try discriminate; assumption.
-    Qed.
+  Qed.
 
 (* ########################### *)
 (** * Solver *)
@@ -331,7 +331,7 @@ Fixpoint ids_union (l1 l2 : list id) :=
   match l1 with
   | [] => l2
   | hd :: tl =>
-    if (List.find (fun x => eqb_id x hd) l2)
+    if existsb (eqb_id hd) l2
       then ids_union tl l2
     else
       ids_union tl (hd :: l2)
@@ -344,9 +344,49 @@ Example ids_union_example2 :
   ids_union [x; y; z] [Id "a"; Id "b"] = [z; y; x; Id "a"; Id "b"].
 Proof. reflexivity. Qed.
 
-(** ** Solver *)
+Lemma find_some_iff_in : forall (x : id) (l : list id),
+  existsb (eqb_id x) l = true <-> In x l.
+Proof.
+  intros x l. split; intros H; induction l as [| hd tl IHtl].
+  - discriminate H.
+  - simpl in *. destruct (eqb_id x hd) eqn:Exhd.
+    + left. rewrite eqb_id_eq in Exhd. symmetry. exact Exhd.
+    + right. simpl in H. apply IHtl in H. exact H.
+  - inversion H.
+  - simpl in *; destruct (eqb_id x hd) eqn:Efi; destruct H as [H | H];
+    try reflexivity.
+    + rewrite eqb_id_neq in Efi. symmetry in H. 
+      apply Efi in H. inversion H.
+    + apply IHtl in H. rewrite H. reflexivity.
+  Qed.
 
-(* TODO: Think about if want to prove some properties showing ids_union correct *)
+Lemma ids_union_preservation2 : forall (x : id) (l1 l2 : list id),
+  In x l2 -> In x (ids_union l1 l2).
+Proof.
+  intros x l1. induction l1 as [| hd tl IHtl]; intros l2 H.
+  - simpl. exact H.
+  - simpl. destruct (existsb (eqb_id hd) l2) eqn:Eeq.
+    + apply IHtl. exact H.
+    + apply IHtl. apply in_cons. exact H.
+  Qed.
+
+
+Lemma ids_union_preservation1 : forall (x : id) (l1 l2 : list id),
+  In x l1 -> In x (ids_union l1 l2).
+Proof.
+  intros x l1 l2 H. generalize dependent l2.
+  induction l1 as [| hd tl IHtl].
+  - inversion H.
+  - intros l2. destruct H as [H | H].
+    + subst. simpl. destruct (existsb (eqb_id x) l2) eqn:Eeq;
+      eapply ids_union_preservation2.
+      * rewrite find_some_iff_in in Eeq. exact Eeq.
+      * simpl. left. reflexivity.
+    + simpl. destruct (existsb (eqb_id hd) l2) eqn:Eeq;
+      apply IHtl; exact H.
+  Qed.
+
+(** ** Solver *)
 
 (* Helper functions *)
 Fixpoint collect_vars (f : form) : list id :=
@@ -358,17 +398,47 @@ Fixpoint collect_vars (f : form) : list id :=
   | _ => []
   end.
 
+(* Inductive var_in_form (x : id) : form -> Prop :=
+  | var_in_var :
+      var_in_form x <{ x }>
+  | var_in_cdi : forall (p q1 q2 : form),
+      p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
+      var_in_form x q1 \/ var_in_form x q2 ->
+      var_in_form x p
+  | var_in_neg : forall (p : form),
+      var_in_form x p ->
+      var_in_form x <{ ~p }>. *)
+
+(* Lemma collect_complete : forall (p : form) (x : id),
+  var_in_form x p <-> In x (collect_vars p).
+Proof.
+  intros p x. split; intros H.
+  - induction H.
+    + left. reflexivity.
+    + destruct H as [H | [H | H]]; subst; destruct H0 as [H | H].
+      * inversion H.
+        -- simpl. *)
+  (* - induction H.
+    + simpl. rewrite eqb_id_eq in H. left. symmetry. exact H.
+    + destruct H as [H | [H | H]]; subst; simpl; 
+      destruct H0 as [H0 | H0]; inversion H0; subst;
+      try destruct H as [H | [H | H]]; subst; simpl.
+      * rewrite eqb_id_eq in H. subst.
+        destruct (find (eqb_id y0) (collect_vars q2)) eqn:Efind.
+        -- *)
+
+
 (* Can e.g. prove that p op q and x in either will end up in collect_vars of p op q *)
 
 (* Don't know if that is useful *)
-Lemma no_atoms_not_empty : forall (f : form),
+(* Lemma no_atoms_not_empty : forall (f : form),
   contains_no_atoms' f -> collect_vars f <> [].
 Proof.
   intros f H. induction H; intros contra. (* TODO: write cases properly *)
   - discriminate contra.
   - destruct H as [Hf | [Hf | Hf]]; subst; simpl in contra;
     unfold ids_union in contra.
-  Admitted.
+  Admitted. *)
 
 Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuation :=
   match l with
@@ -471,6 +541,11 @@ Proof.
     apply IHq in Hq. destruct Hq as [vq Hq].
     simpl in *. *)
 
+Lemma collect_valuations_complete : forall (p : form) (v : valuation) (x : id),
+  exists (v' : valuation), v x = v' x /\
+  In v' (collect_valuations (collect_vars p) [empty_valuation]).
+Proof. Admitted.
+
 (* Difficulty: quite easy to find proof outline informally, but how to formalize?*)
 Lemma solver_complete : forall (f : form),
   satisfiable f -> solver f = true.
@@ -478,7 +553,6 @@ Proof.
   intros f H. unfold solver. 
   destruct (find_valuation f) eqn:Efv; [reflexivity | idtac].
   destruct H as [v H]. unfold find_valuation in Efv.
-  unfold check_valuations in Efv.
   rewrite optim_correct in H. 
   (* assert (Hoptf : minimal_form (optim f)). { apply optim_minimizes. }
   destruct Hoptf as [[b Hopft] | Hoptf].

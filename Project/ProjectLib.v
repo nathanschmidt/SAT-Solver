@@ -91,6 +91,36 @@ Proof.
   simpl. rewrite eqb_eq. reflexivity.
   Qed.
 
+Lemma eqb_id_eq : forall (x y : id),
+  eqb_id x y = true <-> x = y.
+Proof.
+  intros x y. split; intros H; destruct x; destruct y;
+  [f_equal | injection H; intros H']; 
+  apply eqb_eq; assumption.
+  Qed.
+
+Lemma eqb_id_neq : forall (x y : id),
+  eqb_id x y = false <-> x <> y.
+Proof.
+  intros x y. split; intros H; destruct x; destruct y.
+  - intros contra. simpl in H. rewrite eqb_neq in H.
+    injection contra. exact H.
+  - destruct (eqb_id (Id x) (Id x0)) eqn:Eeq.
+    + rewrite eqb_id_eq in Eeq. contradiction.
+    + reflexivity.
+  Qed.
+
+(* needed for nodup -- removed later *)
+(* Theorem id_dec : forall (x y : id),
+  {x = y} + {x <> y}.
+Proof.
+  intros x y. destruct (eqb_id x y) eqn:Exy;
+  destruct x as [x]; destruct y as [y]; simpl in Exy.
+  - rewrite eqb_eq in Exy. left. f_equal. assumption.
+  - rewrite eqb_neq in Exy. right. intros contra. apply Exy.
+    injection contra. intros contra'. assumption.
+  Qed. *)
+
 Definition is_some {A : Type} (x : option A) :=
   match x with
   | Some _ => true
