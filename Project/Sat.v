@@ -370,7 +370,6 @@ Proof.
     + apply IHtl. apply in_cons. exact H.
   Qed.
 
-
 Lemma ids_union_preservation1 : forall (x : id) (l1 l2 : list id),
   In x l1 -> In x (ids_union l1 l2).
 Proof.
@@ -386,7 +385,49 @@ Proof.
       apply IHtl; exact H.
   Qed.
 
+Lemma ids_union_or : forall (x : id) (l1 l2 : list id),
+  In x (ids_union l1 l2) -> In x l1 \/ In x l2.
+Proof.
+  intros x l1. induction l1 as [| hd tl IHtl];
+  intros l2 H.
+  - simpl in H. right. exact H.
+  - simpl in *. destruct (existsb (eqb_id hd) l2).
+    + apply IHtl in H. destruct H as [H | H].
+      * left. right. exact H.
+      * right. exact H.
+    + apply IHtl in H. destruct H as [H | H].
+      * left. right. exact H.
+      * destruct (eqb_id x hd) eqn:Exhd.
+        -- rewrite eqb_id_eq in Exhd. subst.
+           left. left. reflexivity.
+        -- rewrite eqb_id_neq in Exhd. simpl in H.
+           destruct H as [H | H].
+           ++ symmetry in H. apply Exhd in H. inversion H.
+           ++ right. exact H.
+  Qed.
+
 (** ** Solver *)
+
+(* Didn't manage to solve collect_vars_complete with inductive proposition *)
+(* Inductive var_in_form (x : id) : form -> Prop :=
+  | var_in_var :
+      var_in_form x <{ x }>
+  | var_in_cdi : forall (p q1 q2 : form),
+      p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
+      var_in_form x q1 \/ var_in_form x q2 ->
+      var_in_form x p
+  | var_in_neg : forall (p : form),
+      var_in_form x p ->
+      var_in_form x <{ ~p }>. *)
+
+Fixpoint var_in_form (x : id) (p : form) : bool :=
+  match p with
+  | form_var y => eqb_id x y
+  | <{ q1 /\ q2 }> | <{ q1 \/ q2 }> | <{ q1 -> q2 }> => 
+    var_in_form x q1 || var_in_form x q2
+  | <{ ~q }> => var_in_form x q
+  | _ => false
+  end.
 
 (* Helper functions *)
 Fixpoint collect_vars (f : form) : list id :=
@@ -398,16 +439,49 @@ Fixpoint collect_vars (f : form) : list id :=
   | _ => []
   end.
 
-(* Inductive var_in_form (x : id) : form -> Prop :=
-  | var_in_var :
-      var_in_form x <{ x }>
-  | var_in_cdi : forall (p q1 q2 : form),
-      p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
-      var_in_form x q1 \/ var_in_form x q2 ->
-      var_in_form x p
-  | var_in_neg : forall (p : form),
-      var_in_form x p ->
-      var_in_form x <{ ~p }>. *)
+Lemma collect_vars_complete : forall (p : form) (x : id),
+  var_in_form x p = true <-> In x (collect_vars p).
+Proof.
+  intros p x. split; intros H; induction p; simpl in *.
+  - rewrite eqb_id_eq in H. left. symmetry. exact H.
+  - discriminate H.
+  - destruct (var_in_form x p1).
+    + simpl in *. apply IHp1 in H. 
+      eapply ids_union_preservation1 in H. exact H.
+    + destruct (var_in_form x p2).
+      * simpl in H. apply IHp2 in H.
+        eapply ids_union_preservation2 in H. exact H.
+      * discriminate H.
+  - destruct (var_in_form x p1).
+    + simpl in *. apply IHp1 in H. 
+      eapply ids_union_preservation1 in H. exact H.
+    + destruct (var_in_form x p2).
+      * simpl in H. apply IHp2 in H.
+        eapply ids_union_preservation2 in H. exact H.
+      * discriminate H.
+  - destruct (var_in_form x p1).
+    + simpl in *. apply IHp1 in H. 
+      eapply ids_union_preservation1 in H. exact H.
+    + destruct (var_in_form x p2).
+      * simpl in H. apply IHp2 in H.
+        eapply ids_union_preservation2 in H. exact H.
+      * discriminate H.
+  - apply IHp in H. exact H.
+  - destruct H as [H | H].
+    + rewrite eqb_id_eq. symmetry. exact H.
+    + inversion H.
+  - inversion H.
+  - apply ids_union_or in H. destruct H as [H | H].
+    + apply IHp1 in H. rewrite H. reflexivity.
+    + apply IHp2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply ids_union_or in H. destruct H as [H | H].
+    + apply IHp1 in H. rewrite H. reflexivity.
+    + apply IHp2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply ids_union_or in H. destruct H as [H | H].
+    + apply IHp1 in H. rewrite H. reflexivity.
+    + apply IHp2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply IHp in H. exact H.
+  Qed.
 
 (* Lemma collect_complete : forall (p : form) (x : id),
   var_in_form x p <-> In x (collect_vars p).
@@ -426,7 +500,6 @@ Proof.
       * rewrite eqb_id_eq in H. subst.
         destruct (find (eqb_id y0) (collect_vars q2)) eqn:Efind.
         -- *)
-
 
 (* Can e.g. prove that p op q and x in either will end up in collect_vars of p op q *)
 
@@ -541,16 +614,22 @@ Proof.
     apply IHq in Hq. destruct Hq as [vq Hq].
     simpl in *. *)
 
-Lemma collect_valuations_complete : forall (p : form) (v : valuation) (x : id),
+(* Lemma collect_valuations_complete : forall (p : form) (v : valuation) (x : id),
   exists (v' : valuation), v x = v' x /\
   In v' (collect_valuations (collect_vars p) [empty_valuation]).
-Proof. Admitted.
+Proof. Admitted. *)
 
-(* Difficulty: quite easy to find proof outline informally, but how to formalize?*)
-Lemma solver_complete : forall (f : form),
-  satisfiable f -> solver f = true.
+
+
+(* Difficulty: quite easy to find proof outline informally, but how to formalize? *)
+Lemma solver_complete : forall (p : form),
+  satisfiable p -> solver p = true.
 Proof. 
-  intros f H. unfold solver. 
+  intros p [v H]. unfold solver.
+  destruct (find_valuation p) eqn:Efvp; [reflexivity | idtac].
+  unfold find_valuation in Efvp. rewrite optim_correct in H.
+  Admitted.
+  (* intros f H. unfold solver. 
   destruct (find_valuation f) eqn:Efv; [reflexivity | idtac].
   destruct H as [v H]. unfold find_valuation in Efv.
   rewrite optim_correct in H. 
@@ -558,7 +637,7 @@ Proof.
   destruct Hoptf as [[b Hopft] | Hoptf].
   - destruct b; rewrite Hopft in H, Efv; simpl in Efv; discriminate.
   -  *)
-  Admitted.
+  Admitted. *)
 
 Theorem solver_true_iff_satisfiable : forall (f : form),
   solver f = true <-> satisfiable f.
