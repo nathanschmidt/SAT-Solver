@@ -406,6 +406,21 @@ Proof.
            ++ right. exact H.
   Qed.
 
+Lemma ids_union_no_duplicates : forall (l1 l2 : list id),
+  NoDup l1 -> NoDup l2 -> NoDup (ids_union l1 l2).
+Proof.
+  induction l1 as [| hd tl IHtl]; intros l2 H1 H2.
+  - simpl. exact H2.
+  - simpl. inversion H1. subst. destruct (existsb (eqb_id hd) l2) eqn:Eeqb.
+    + apply IHtl; assumption.
+    + assert (Hhdnotl2 : ~ In hd l2).
+      { intros contra. rewrite <- find_some_iff_in in contra.
+        rewrite contra in Eeqb. discriminate Eeqb. }
+      assert (Hnodup : NoDup (hd :: l2)).
+      { constructor; assumption. }
+      apply IHtl; assumption. 
+  Qed.
+
 (** ** Solver *)
 
 (* Didn't manage to solve collect_vars_complete with inductive proposition *)
@@ -483,6 +498,16 @@ Proof.
   - apply IHp in H. exact H.
   Qed.
 
+Lemma collect_vars_no_duplicates : forall (p : form),
+  NoDup (collect_vars p).
+Proof.
+  intros p. induction p.
+  - simpl. constructor.
+    + intros contra. inversion contra.
+    + constructor.
+  - simpl. constructor.
+  - simpl. unfold ids_union.
+
 (* Lemma collect_complete : forall (p : form) (x : id),
   var_in_form x p <-> In x (collect_vars p).
 Proof.
@@ -518,6 +543,12 @@ Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuatio
   | [] => acc
   | x :: xs => collect_valuations xs ((map (fun v => x !-> true ; v) acc) ++ acc)
   end.
+
+(* That's not true as don't know if l has duplicates *)
+(* Lemma collect_valuations_complete : forall (x : id) (l : list id) (acc : list valuation),
+  In x l <-> exists (vt vf : valuation), 
+  In vt (collect_valuations l acc) /\ In vf (collect_valuations l acc) 
+  /\ vt x = true /\ vf x = false. *)
 
 Fixpoint check_valuations (f : form) (l : list valuation) : option valuation :=
   match l with
