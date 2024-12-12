@@ -207,7 +207,7 @@ Inductive contains_no_atoms : form -> Prop :=
       p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
       contains_no_atoms q1 ->
       contains_no_atoms q2 ->
-      contains_no_atoms p (* (q1 op q2) has not atoms if q1 _and_ q2 do not *)
+      contains_no_atoms p (* (q1 op q2) has not atoms if q1 and q2 do not *)
   | cna_neg : forall (p : form),
       contains_no_atoms p ->
       contains_no_atoms <{ ~p }>.
@@ -270,6 +270,24 @@ Fixpoint optim (p : form) : form :=
 (* ================================================================= *)
 (** ** Correctness *)
 
+(** First, let us underline that the optimizer indeed purely operates on a
+    syntactical level through the following lemma. *)
+
+Lemma optim_no_atoms_same : forall (p : form),
+  contains_no_atoms p -> optim p = p.
+Proof.
+  intros p H. induction H as [x | p q1 q2 Hp Hq1 IHq1 Hq2 IHq2 | q Hq IHq].
+  - reflexivity.
+  - destruct Hp as [Hp | [Hp | Hp]]; rewrite Hp; clear Hp;
+    simpl; rewrite IHq1; clear IHq1; rewrite IHq2; clear IHq2;
+    inversion Hq1 as [xq1 Hxq1 | q1' q11 q12 Hq1' Hq11 Hq12 | q1' Hq1'];
+    inversion Hq2 as [xq2 Hxq2 | q2' q21 q22 Hq2' Hq21 Hq22 | q2' Hq2'];
+    try destruct Hq1' as [Hq1' | [Hq1' | Hq1']];
+    try destruct Hq2' as [Hq2' | [Hq2' | Hq2']]; subst; reflexivity.
+  - simpl. rewrite IHq. destruct q; try reflexivity.
+    inversion Hq. destruct H as [H | [H | H]]; inversion H.
+  Qed.
+
 (** Naturally, we need to show that the optimizer does not change the semantics
     of formulas, meaning that given an identical valuation, the interpreter will 
     _always_ return the same result for the formula itself and its optimized 
@@ -303,3 +321,64 @@ Proof.
   try destruct b;
   simpl in *; rewrite IHq1, IHq2; auto.
   Qed.
+
+(* ================================================================= *)
+(** ** Minimizing Property *)
+
+(** Now, we show that we actually gain something by using the optimizer, 
+    meaning it indeed transforms any formula to its minimal form. *)
+
+Theorem optim_minimizes : forall (p : form),
+  minimal_form (optim p).
+Proof.
+  induction p as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
+                  q IHq];
+  unfold minimal_form; simpl.
+  - (* x *) right. constructor.
+  - (* bool *) left. exists b. reflexivity.
+  - (* q1 /\ q2 *) destruct IHq1 as [IHq1 | IHq1]; 
+    destruct IHq2 as [IHq2 | IHq2].
+    + (* q1, q2 bool *) left. 
+      destruct IHq1 as [b1 IHq1]. destruct IHq2 as [b2 IHq2].
+      rewrite IHq1. rewrite IHq2.
+      destruct b1.
+      * exists b2. reflexivity.
+      * destruct b2; exists false; reflexivity.
+    + (* q1 bool, q2 no atoms *) destruct IHq1 as [b1 IHq1]. rewrite IHq1.
+      destruct b1.
+      * (* b1 = true *) right. assumption.
+      * (* b1 = false *) left. exists false. 
+        destruct (optim q2); try destruct b; constructor.
+    + (* q1 no atoms, q2 bool *) destruct IHq2 as [b2 IHq2]. rewrite IHq2.
+      destruct b2.
+      * (* b2 = true *) right; destruct (optim q1);
+        (* optim q1 not bool *) try assumption.
+        (* optim q1 bool *) inversion IHq1. 
+        destruct H as [H | [H | H]]; inversion H.
+      * (* b2 = false *) left. exists false.
+        destruct (optim q1); try destruct b; constructor.
+    + (* q1, q2 no atoms *) destruct (optim q1).
+      * (* optim q1 var *) right. destruct (optim q2);
+        (* optim q2 bool *) try (inversion IHq2; destruct H as [H | [H | H]]; 
+        inversion H);
+        (* else *) econstructor; 
+        try (left; reflexivity);
+        try rewrite <- H; assumption.
+      * (* optim q1 bool *) destruct b.
+        -- (* b = true *) right. assumption.
+        -- (* b = false *) left. exists false. 
+           destruct (optim q2); try destruct b; reflexivity.
+      * (* optim q1 not bool *) destruct (optim q2).
+        (* optim q2 bool *) try (destruct b; [right; assumption | 
+        left; exists false; reflexivity]);
+        (* else *) right; econstructor;
+        try (left; reflexivity).
+        (* TODO: simplify *)
+        -- assumption.
+        -- assumption.
+        -- destruct b; [right; assumption | left; exists false; reflexivity].
+        -- right. econstructor; [left; reflexivity | idtac | idtac]; assumption.
+        -- right. econstructor; [left; reflexivity | idtac | idtac]; assumption.
+        -- right. econstructor; [left; reflexivity | idtac | idtac]; assumption.
+        -- right. econstructor; [left; reflexivity | idtac | idtac]; assumption.
+      * Admitted.
