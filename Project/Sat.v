@@ -1,5 +1,6 @@
 Require Import String.
 Require Import List.
+Require Import Bool.
 
 (** In this project, we implement a small brute-force SAT-Solver and formally
     prove it to be correct and complete. *)
@@ -27,26 +28,28 @@ Definition eqb_id (x y : id) : bool :=
 Lemma eqb_id_refl : forall (x : id),
   eqb_id x x = true.
 Proof.
-  intros x. destruct x. 
-  simpl. rewrite eqb_eq. reflexivity.
+  destruct x as [x]. simpl.
+  rewrite String.eqb_eq. reflexivity.
   Qed.
 
 Lemma eqb_id_eq : forall (x y : id),
   eqb_id x y = true <-> x = y.
 Proof.
-  intros x y. split; intros H; destruct x; destruct y;
+  intros x y. split; 
+  intros H; destruct x as [x]; destruct y as [y];
   [f_equal | injection H; intros H']; 
-  apply eqb_eq; assumption.
+  apply String.eqb_eq; assumption.
   Qed.
 
 Lemma eqb_id_neq : forall (x y : id),
   eqb_id x y = false <-> x <> y.
 Proof.
-  intros x y. split; intros H; destruct x; destruct y.
-  - intros contra. simpl in H. rewrite eqb_neq in H.
-    injection contra. exact H.
-  - destruct (eqb_id (Id x) (Id x0)) eqn:Eeq.
-    + rewrite eqb_id_eq in Eeq. contradiction.
+  intros x y. split; 
+  intros H; destruct x as [x]; destruct y as [y].
+  - (* -> *) intros contra. simpl in H. 
+    rewrite String.eqb_neq in H. injection contra. exact H.
+  - (* <- *) destruct (eqb_id (Id x) (Id y)) eqn:Exy.
+    + rewrite eqb_id_eq in Exy. contradiction.
     + reflexivity.
   Qed.
 
@@ -56,12 +59,12 @@ Proof.
 (** We can now specify the type of formulas [form] through a set of rules. *)
 
 Inductive form : Type :=
-  | form_var (x : id)
-  | form_bool (b : bool)
-  | form_conj (p : form) (q : form)
-  | form_disj (p : form) (q : form)
-  | form_impl (p : form) (q : form)
-  | form_neg (p : form).
+  | (* x *) form_var (x : id)
+  | (* true, false *) form_bool (b : bool)
+  | (* p /\ q *) form_conj (p : form) (q : form)
+  | (* p \/ q *) form_disj (p : form) (q : form)
+  | (* p -> q *) form_impl (p : form) (q : form)
+  | (* ~p *) form_neg (p : form).
 
 (* ================================================================= *)
 (** ** Concrete Syntax *)
@@ -129,33 +132,174 @@ Print concrete_syntax_example3.
 (* ================================================================= *)
 (** ** Valuations *)
 
-(** We define a valuation as a total map from identifiers to booleans. *)
+(** We define a valuation as a total map from identifiers to booleans. By
+    default, identifiers are mapped to [false]. *)
 
 Definition valuation : Type := id -> bool .
 
 Definition empty_valuation : valuation := fun x => false.
-Definition override (V : valuation) (x : id) (b : bool) : valuation :=
-    fun y => if eqb_id x y then b else V y.
+Definition override (v : valuation) (x : id) (b : bool) : valuation :=
+    fun y => if eqb_id x y then b else v y.
+
+(** Again, let us also introduce shorthand notations. *)
 
 Notation "x '!->' b" := (override empty_valuation x b) (at level 100).
-Notation "x '!->' b ';' V" := (override V x b)
+Notation "x '!->' b ';;' v" := (override v x b)
     (at level 100, b at next level, right associativity).
 
 Definition valuation_example :=
-    x !-> true ; y !-> false ; z !-> true.
+    x !-> true ;; y !-> false ;; z !-> true.
 Unset Printing Notations.
 Print valuation_example.
 Set Printing Notations.
 
 (** We will later make use of the following lemma.
     _Source: Pierce et. al. Logical Foundations. Vol. 1 Software Foundations. 
-    Electronic textbook, 2024._ *)
+    Electronic textbook, 2024_ *)
     
-Lemma update_eq : forall (V : valuation) (x : id) (b : bool),
-  (x !-> b ; V) x = b.
+Lemma update_eq : forall (v : valuation) (x : id) (b : bool),
+  (x !-> b ;; v) x = b.
 Proof.
-  intros V x b. unfold override. 
+  intros v x b. unfold override. 
   rewrite eqb_id_refl. reflexivity.
   Qed.
 
+(* ================================================================= *)
+(** ** Interpreter *)
 
+(** The following function interprets a formula in the context of a valuation, 
+    that is, returns [true] if and only if the formula holds for the given 
+    mapping of identifiers to boolean values. *)
+
+Fixpoint interp (v : valuation) (p : form) : bool :=
+  match p with
+  | form_var x => v x
+  | <{ true }> => true
+  | <{ false }> => false
+  | <{ p /\ q }> => (* both need to hold *) (interp v p) && (interp v q)
+  | <{ p \/ q }> => (* one needs to hold *) (interp v p) || (interp v q)
+  | <{ p -> q }> => (* equiv ~p \/ q *) (negb (interp v p)) || (interp v q)
+  | <{ ~p }> => negb (interp v p)
+  end.
+
+Example interp_example1 : 
+  interp empty_valuation <{ x \/ (y /\ z) \/ (false -> x) }> = true.
+Proof. reflexivity. Qed.
+
+Example interp_example2 :
+  interp (x !-> true ;; y !-> false ;; z !-> true)
+    <{ x -> ((x \/ y) /\ (~z)) }> 
+  = false.
+Proof. reflexivity. Qed.
+
+(* ################################################################# *)
+(** * Optimizer *)
+
+(** Many formulas are not in minimal form, i.e., can further be simplified 
+    purely on a syntactic basis without considering a valuation. We first give
+    give an inductive predicate for formulas that do not contain atoms, i.e., do
+    not contain [true] or [false]. *)
+
+Inductive contains_no_atoms : form -> Prop :=
+  | cna_var : forall (x : id), 
+      contains_no_atoms <{ x }>
+  | cna_cdi : forall (p q1 q2 : form), 
+      p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
+      contains_no_atoms q1 ->
+      contains_no_atoms q2 ->
+      contains_no_atoms p (* (q1 op q2) has not atoms if q1 _and_ q2 do not *)
+  | cna_neg : forall (p : form),
+      contains_no_atoms p ->
+      contains_no_atoms <{ ~p }>.
+
+(** Then, we define a formula to be minimal if it is either an atom or does not
+    contain any atoms. *)
+
+Definition minimal_form (p : form) : Prop :=
+  (exists (b : bool), p = form_bool b) \/ contains_no_atoms p.
+
+(* ================================================================= *)
+(** ** Function *)
+
+(** We know introduce the optimizer function. It performs a DFS post-order
+    traversal of the abstract syntax tree and applies allowed simplifications at
+    each step. *)
+
+Fixpoint optim (p : form) : form :=
+  match p with
+  | <{ q1 /\ q2 }> =>
+    let q1_opt := optim q1 in 
+    let q2_opt := optim q2 in
+    match q1_opt, q2_opt with
+    | <{ true }>, _ => q2_opt
+    | _, <{ true }> => q1_opt
+    | <{ false }>, _ => <{ false }>
+    | _, <{ false }> => <{ false }>
+    | _, _ => <{ q1_opt /\ q2_opt }>
+    end
+  | <{ q1 \/ q2 }> =>
+    let q1_opt := optim q1 in
+    let q2_opt := optim q2 in
+    match q1_opt, q2_opt with
+    | <{ true }>, _ => <{ true }>
+    | _, <{ true }> => <{ true }>
+    | <{ false }>, _ => q2_opt
+    | _, <{ false }> => q1_opt
+    | _, _ => <{ q1_opt \/ q2_opt }>
+    end
+  | <{ q1 -> q2 }> =>
+    let q1_opt := optim q1 in
+    let q2_opt := optim q2 in
+    match q1_opt, q2_opt with
+    | <{ true }>, _ => q2_opt
+    | _, <{ true }> => <{ true }>
+    | <{ false }>, _ => <{ true }>
+    | _, <{ false }> => <{ ~q1_opt }>
+    | _, _ => <{ q1_opt -> q2_opt }>
+    end
+  | <{ ~q }> =>
+    let q_opt := optim q in
+    match q_opt with
+    | <{ true }> => <{ false }>
+    | <{ false }> => <{ true }>
+    | _ => <{ ~q_opt }>
+    end
+  | _ => p
+  end.
+
+(* ================================================================= *)
+(** ** Correctness *)
+
+(** Naturally, we need to show that the optimizer does not change the semantics
+    of formulas, meaning that given an identical valuation, the interpreter will 
+    _always_ return the same result for the formula itself and its optimized 
+    version. *)
+
+Hint Resolve andb_true_r : core.
+Hint Resolve andb_false_r : core.
+Hint Resolve orb_true_r : core.
+Hint Resolve orb_false_r : core.
+
+Ltac destruct_if b q := 
+  let rw :=
+    repeat match goal with
+    | [ H : _ = _ |- _ ] => rewrite H
+    end in
+  destruct b; rw;
+  [ reflexivity | destruct q; try destruct b; reflexivity]. 
+
+Theorem optim_correct : forall (v : valuation) (p : form),
+  interp v p = interp v (optim p).
+Proof.
+  induction p as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                  q1 IHq1 q2 IHq2 | q1 IHq1]; 
+  try reflexivity;
+  simpl; destruct (optim q1);
+  try destruct_if b (optim q2);
+  try destruct b;
+  try (rewrite IHq1; reflexivity);
+  destruct (optim q2);
+  try (simpl in *; rewrite IHq1, IHq2; reflexivity);
+  try destruct b;
+  simpl in *; rewrite IHq1, IHq2; auto.
+  Qed.

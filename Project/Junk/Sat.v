@@ -78,18 +78,18 @@ Definition override (V : valuation) (x : id) (b : bool) : valuation :=
     fun y => if eqb_id x y then b else V y.
 
 Notation "x '!->' b" := (override empty_valuation x b) (at level 100).
-Notation "x '!->' b ';' V" := (override V x b)
+Notation "x '!->' b ';;' V" := (override V x b)
     (at level 100, b at next level, right associativity).
 
 Definition valuation_example :=
-    x !-> true ; y !-> false ; z !-> true.
+    x !-> true ;; y !-> false ;; z !-> true.
 Unset Printing Notations.
 Print valuation_example.
 Set Printing Notations.
 
 (* from Maps chapter of LF *)
 Lemma update_eq : forall (V : valuation) (x : id) (b : bool),
-  (x !-> b ; V) x = b.
+  (x !-> b ;; V) x = b.
 Proof.
   intros V x b. unfold override. 
   rewrite eqb_id_refl. reflexivity.
@@ -192,8 +192,8 @@ Proof.
     induction p as [x | b | q IHq q' IHq' | q IHq q' IHq' | q IHq q' IHq' |
                     q IHq]; 
     try reflexivity;
-    simpl; destruct (optim q) as [x | b | q_opt1 q_opt2 | q_opt1 q_opt2 |
-                                    q_opt1 q_opt2 | q_opt];
+    simpl; destruct (optim q) as [x | b | q1_opt q2_opt | q1_opt q2_opt |
+                                    q1_opt q2_opt | q_opt];
     try destruct_if b (optim q');
     try destruct b;
     try (rewrite IHq; reflexivity);
@@ -326,7 +326,7 @@ Definition satisfiable (p : form) : Prop :=
   exists (V : valuation), interp V p = true.
 
 Lemma satisfiable_test1 : satisfiable <{ (x \/ ~y) /\ (~x \/ y) }>.
-Proof. exists (x !-> true ; y !-> true). reflexivity. Qed.
+Proof. exists (x !-> true ;; y !-> true). reflexivity. Qed.
 
 Lemma satisfiable_test2 : satisfiable <{ ~y -> (x \/ y) }>.
 Proof. exists (y !-> true). reflexivity. Qed.
@@ -545,11 +545,25 @@ Proof.
     unfold ids_union in contra.
   Admitted. *)
 
-Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuation :=
+(* Very difficult to prove anything with that... *)
+(* Fixpoint collect_valuations (l : list id) (acc : list valuation) : list valuation :=
   match l with
   | [] => acc
   | x :: xs => collect_valuations xs ((map (fun v => x !-> true ; v) acc) ++ acc)
+  end. *)
+
+Fixpoint collect_valuations (l : list id) :=
+  match l with
+  | [] => []
+  | [x] => [x !-> true (*; x !-> false *)]
+  | x :: xs => 
+    let xs_vals := collect_valuations xs in
+    map (fun y => x !-> true ;; y) xs_vals ++ (* map (fun y => x !-> false ;; y) *) xs_vals
   end.
+
+Example collect_valuations_example : collect_valuations [x; y] = 
+  [x !-> true ;; y !-> true ; y !-> true].
+Proof. reflexivity. Qed.
 
 (* doesn't hold :( )*)
 (* Lemma testing : forall (l : list valuation) (x : id) (b : bool),
@@ -574,8 +588,9 @@ Proof.
   - exact Hl2.
   - constructor.
     + inversion Hl1. subst. simpl in Hxl2.
+    Admitted.
 
-Lemma collect_valuations_no_duplicates : forall (l : list id) (acc : list valuation),
+(* Lemma collect_valuations_no_duplicates : forall (l : list id) (acc : list valuation),
   NoDup l -> NoDup acc -> 
   (forall (x : id) (v : valuation), In x l -> In v acc -> v x = false) ->
   NoDup (collect_valuations l acc).
@@ -584,7 +599,7 @@ Proof.
   - simpl. exact Hacc.
   - apply IHtl.
     + inversion Hl. assumption.
-    +  
+    + Admitted.  *)
 
 (* That's not true as don't know if l has duplicates *)
 (* Lemma collect_valuations_complete : forall (x : id) (l : list id) (acc : list valuation),
@@ -604,7 +619,7 @@ Proof.
     + simpl. destruct (eqb_id x x0) eqn:Exx0.
       * rewrite eqb_id_eq in Exx0. subst. *)
 
-Lemma TEST : forall (v : valuation) (p : form),
+(* Lemma TEST : forall (v : valuation) (p : form),
   interp v p = interp (fun x => if var_in_form x p then v x else false) p.
 Proof.
   intros v p. generalize dependent v. induction p; intros v; simpl.
@@ -619,7 +634,7 @@ Lemma ANOTHER_NO_NAME_LEMMA : forall (p : form) (v v' : valuation) (vs : list va
   interp v p = true ->
   (forall (x : id), var_in_form x p = true -> v x = v' x) ->
   interp v' p = true.
-Proof. Admitted.
+Proof. Admitted. *)
 
 Fixpoint check_valuations (f : form) (l : list valuation) : option valuation :=
   match l with
@@ -651,7 +666,7 @@ Proof.
 Definition find_valuation (f : form) : option valuation :=
   let optim_f := optim f in
   let vars := collect_vars optim_f in
-  let valuations := collect_valuations vars [empty_valuation] in
+  let valuations := collect_valuations vars in
   (* doesn't work as interp keeps no trace of v but just says true or false*)
   (* find is_some (map (fun v => interp v optim_f) valuations). *)
   (* Also following solutions better runtime as stops as soon as one found *)
@@ -694,7 +709,7 @@ Proof.
      Correctness of encapsulated functions doesn't matter,
      can just do case distinction and see them as black box *)
   induction 
-  (collect_valuations (collect_vars (optim f)) [empty_valuation])
+  (collect_valuations (collect_vars (optim f)))
   as [| v' vs' IHvs'].
   - discriminate Efv.
   - destruct (interp v' (optim f)) eqn:Eiv'.
@@ -731,7 +746,37 @@ Proof.
   In v' (collect_valuations (collect_vars p) [empty_valuation]).
 Proof. Admitted. *)
 
+(* Lemma interp_true_conj : forall (v : valuation) (p q : form) (x : id),
+  interp v <{ p /\ q }> = true ->
+  exists (vp vq : valuation), 
+    interp vp p = true /\
+    interp vq q = true /\
+    (var_in_form x p = true -> var_in_form x q = true ->
+     vp x = vq x).
+Proof.
+  intros v p. generalize dependent v. induction p;
+  intros v q x H.
+  - Admitted.
 
+Lemma interp_true_find_valuation_some : forall (v : valuation) (p : form) (x : id),
+  interp v p = true -> var_in_form x p = true ->
+  exists (v' : valuation), find_valuation p = Some v' /\
+  v x = v' x.
+Proof.
+  intros v p. generalize dependent v.
+  induction p; intros v x Hinterp Hvar.
+  - destruct (eqb_id x x0) eqn:Exx0.
+    + rewrite eqb_id_eq in Exx0. subst.
+      exists (x0 !-> true). split.
+      * unfold find_valuation. simpl.
+        rewrite update_eq. reflexivity.
+      * destruct (v x0) eqn:Evx0.
+        -- rewrite update_eq. reflexivity.
+        -- simpl in Hinterp. rewrite Hinterp in Evx0.
+           discriminate Evx0.
+    + simpl in Hvar. rewrite Hvar in Exx0. discriminate Exx0.
+  - destruct b; discriminate Hvar.
+  - Admitted. *)
 
 (* Difficulty: quite easy to find proof outline informally, but how to formalize? *)
 Lemma solver_complete : forall (p : form),
@@ -744,7 +789,7 @@ Proof.
   induction (optim p); simpl in Efvp.
   - unfold override in Efvp. rewrite eqb_id_refl in Efvp.
     discriminate Efvp.
-  - destruct b; discriminate.
+  - destruct b. discriminate.
   - simpl in H. rewrite andb_true_iff in H. destruct H as [H1 H2].
   Admitted.
   (* intros f H. unfold solver. 
