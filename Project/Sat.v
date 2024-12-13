@@ -163,15 +163,24 @@ Unset Printing Notations.
 Print valuation_example.
 Set Printing Notations.
 
-(** We will later make use of the following lemma.
+(** We will later make use of the following lemmas.
     _Source: Pierce et. al. Logical Foundations. Vol. 1 Software Foundations. 
     Electronic textbook, 2024_ *)
     
-Lemma update_eq : forall (v : valuation) (x : id) (b : bool),
+Lemma override_eq : forall (v : valuation) (x : id) (b : bool),
   (x !-> b ;; v) x = b.
 Proof.
   intros v x b. unfold override. 
   rewrite eqb_id_refl. reflexivity.
+  Qed.
+
+Theorem override_neq : forall (v : valuation) (x1 x2 : id) (b : bool),
+  x1 <> x2 ->
+  (x1 !-> b ;; v) x2 = v x2.
+Proof.
+  intros v x1 x2 b H. unfold override. 
+  rewrite <- eqb_id_neq in H. rewrite H.
+  reflexivity.
   Qed.
 
 (* ================================================================= *)
@@ -558,9 +567,106 @@ Proof.
 
 Fixpoint collect_valuations (ids : set id) : list valuation :=
   match ids with
-  | [] => []
-  | [x] => [x !-> true (*; x !-> false *)]
+  | [] => [empty_valuation]
   | x :: xs => 
     let xs_vals := collect_valuations xs in
-    map (fun y => x !-> true ;; y) xs_vals ++ (* map (fun y => x !-> false ;; y) *) xs_vals
+    map (fun y => x !-> true ;; y) xs_vals 
+    ++ map (fun y => x !-> false ;; y) xs_vals
   end.
+
+Example collect_valuations_example : collect_valuations [x; y] = 
+  [(x !-> true ;; y !-> true) ; (x !-> true ;; y !-> false) ;
+   (x !-> false ;; y !-> true) ; (x !-> false ;; y !-> false)].
+Proof. reflexivity. Qed.
+
+Lemma collect_valuations_not_empty : forall (ids : set id),
+  collect_valuations ids <> [].
+Proof.
+  intros ids. induction ids as [| x xs]; 
+  intros contra; simpl in contra.
+  - discriminate contra.
+  - apply app_eq_nil in contra. destruct contra as [contra1 contra2].
+    assert (Hlen : length (collect_valuations xs) >= 1).
+    { destruct (collect_valuations xs) as [| v vs].
+      - contradiction.
+      - simpl. apply le_n_S. apply le_0_n. }
+    assert (Hlen_map : length (
+            map (fun y : valuation => x !-> true;; y) (collect_valuations xs))
+            = 0).
+    { rewrite contra1. reflexivity. }
+    erewrite <- map_length in Hlen. rewrite Hlen_map in Hlen.
+    inversion Hlen.
+  Qed.
+
+Lemma collect_valuations_all_ids : forall (x : id) (ids : set id),
+  set_In x ids <->
+  (exists v, In v (collect_valuations ids) /\ v x = true) /\
+  (exists v, In v (collect_valuations ids) /\ v x = false).
+Proof.
+  intros x ids. split; intros H.
+  - (* -> *) split; generalize dependent x; 
+    induction ids as [| y ys IHys]; intros x H.
+    + (* ids = [] *) inversion H.
+    + (* ids = y :: ys *) simpl in H. destruct H as [H | H].
+      * (* y = x *) subst. simpl.
+        destruct (collect_valuations ys) as [| v vs] eqn:Evals.
+        -- (* vals = [] *) apply collect_valuations_not_empty in Evals.
+           inversion Evals.
+        -- (* vals = v :: vs *) exists (x !-> true ;; v). simpl. split.
+           ++ left. reflexivity.
+           ++ rewrite override_eq. reflexivity.
+      * (* x in ys *) apply IHys in H. destruct H as [v [H1 H2]].
+        simpl. exists (y !-> true ;; v). split.
+        -- apply in_or_app. left. 
+           eapply in_map in H1. exact H1.
+        -- destruct (eqb_id y x) eqn:Eyx.
+           ++ rewrite eqb_id_eq in Eyx. subst.
+              rewrite override_eq. reflexivity.
+           ++ rewrite eqb_id_neq in Eyx. rewrite override_neq; assumption.
+    + (* ids = [] *) inversion H.
+    + (* ids = y :: ys *) simpl in H. destruct H as [H | H].
+      * (* y = x *) subst. simpl.
+        destruct (collect_valuations ys) as [| v vs] eqn:Evals.
+        -- (* vals = [] *) apply collect_valuations_not_empty in Evals.
+           inversion Evals.
+        -- (* vals = v :: vs *) exists (x !-> false ;; v). split.
+           ++ apply in_or_app. right. simpl. left. reflexivity.
+           ++ rewrite override_eq. reflexivity.
+      * (* x in ys *) apply IHys in H. destruct H as [v [H1 H2]].
+        simpl. exists (y !-> false ;; v). split.
+        -- apply in_or_app. right. 
+           eapply in_map in H1. exact H1.
+        -- destruct (eqb_id y x) eqn:Eyx.
+           ++ rewrite eqb_id_eq in Eyx. subst.
+              rewrite override_eq. reflexivity.
+           ++ rewrite eqb_id_neq in Eyx. rewrite override_neq; assumption.
+  - (* <- *) induction ids as [| y ys IHys]; destruct H as [[v1 H1] [v2 H2]].
+    + (* ids = [] *) simpl in H1. destruct H1 as [[H11 | H11] H12].
+      * subst. discriminate H12.
+      * inversion H11.
+    + (* ids = y :: ys *) simpl in *.
+      destruct (eqb_id y x) eqn:Eyx.
+      * (* y = x *) rewrite eqb_id_eq in Eyx. left. exact Eyx.
+      * (* y <> x *) rewrite eqb_id_neq in Eyx. right.
+        destruct H1 as [H11 H12]. destruct H2 as [H21 H22].
+        apply in_app_or in H11. apply in_app_or in H21.
+        apply IHys. split.
+        -- destruct H11 as [H11 | H11].
+           ++ rewrite in_map_iff in H11. destruct H11 as [v [H111 H112]].
+              subst. exists v. split.
+              ** assumption.
+              ** rewrite override_neq in H12; assumption.
+           ++ rewrite in_map_iff in H11. destruct H11 as [v [H111 H112]].
+              subst. exists v. split.
+              ** assumption.
+              ** rewrite override_neq in H12; assumption.
+        -- destruct H21 as [H21 | H21].
+           ++ rewrite in_map_iff in H21. destruct H21 as [v [H211 H212]].
+              subst. exists v. split.
+              ** assumption.
+              ** rewrite override_neq in H22; assumption.
+           ++ rewrite in_map_iff in H21. destruct H21 as [v [H211 H212]].
+              subst. exists v. split.
+              ** assumption.
+              ** rewrite override_neq in H22; assumption.
+  Qed.
