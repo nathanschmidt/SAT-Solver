@@ -1,6 +1,8 @@
 Require Import String.
 Require Import List.
+Import ListNotations.
 Require Import Bool.
+Require Import Coq.Lists.ListSet.
 
 (** In this project, we implement a small brute-force SAT-Solver and formally
     prove it to be correct and complete. *)
@@ -51,6 +53,14 @@ Proof.
   - (* <- *) destruct (eqb_id (Id x) (Id y)) eqn:Exy.
     + rewrite eqb_id_eq in Exy. contradiction.
     + reflexivity.
+  Qed.
+
+Theorem id_eq_dec : forall (x y : id),
+  {x = y} + {x <> y}.
+Proof.
+  intros x y. destruct (eqb_id x y) eqn:Exy.
+  + left. rewrite eqb_id_eq in Exy. exact Exy.
+  + right. rewrite eqb_id_neq in Exy. exact Exy.
   Qed.
 
 (* ================================================================= *)
@@ -437,3 +447,120 @@ Proof.
     try destruct b; left; try (exists true; reflexivity);
     exists false; reflexivity.
   Qed.
+
+(* ################################################################# *)
+(** * Solver *)
+
+(** Moving on, we can finally define our SAT-Solver function. *)
+
+(* ================================================================= *)
+(** ** Satisfiability *)
+
+(** To this end, let us formally establish the concept of satisfiability. *)
+
+Definition satisfiable (p : form) : Prop :=
+  exists (v : valuation), interp v p = true.
+
+Example satisfiable_example1 : satisfiable <{ (x \/ ~y) /\ (~x \/ y) }>.
+Proof. exists (x !-> true ;; y !-> true). reflexivity. Qed.
+
+Example satisfiable_example2 : satisfiable <{ ~y -> (x \/ y) }>.
+Proof. exists (y !-> true). reflexivity. Qed.
+
+(* ================================================================= *)
+(** ** Identifier Extraction *)
+
+(** We will construct the solver in incremental steps. First, we define a
+    function that, given a formula, collects all contained identifiers. *)
+
+Definition empty_id_set := empty_set id.
+Definition id_set_add := set_add id_eq_dec.
+Definition id_set_union := set_union id_eq_dec.
+
+Fixpoint collect_ids (p : form) : set id :=
+  match p with
+  | form_var x => id_set_add x (empty_set id)
+  | <{ p /\ q }> | <{ p \/ q }> | <{ p -> q }> => 
+    id_set_union (collect_ids p) (collect_ids q)
+  | <{ ~p }> => collect_ids p
+  | _ => empty_id_set
+  end.
+
+(** Of course, it is important to show this function leaves out no identifiers.
+    Therefore, let us define when an identifier is contained in a formula [p] 
+    and then prove that this is exactly the case when it is in 
+    [collect_ids p].*)
+
+Fixpoint id_in_form (x : id) (p : form) : bool :=
+  match p with
+  | form_var y => eqb_id x y
+  | <{ q1 /\ q2 }> | <{ q1 \/ q2 }> | <{ q1 -> q2 }> => 
+    id_in_form x q1 || id_in_form x q2
+  | <{ ~q }> => id_in_form x q
+  | _ => false
+  end.
+
+Lemma id_in_form_iff_in_collect_ids : forall (x : id) (p : form),
+  id_in_form x p = true <-> set_In x (collect_ids p).
+Proof.
+  intros x p. split; intros H;
+  induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
+                  q IHq];
+  simpl in *.
+  - rewrite eqb_id_eq in H. left. symmetry. exact H.
+  - discriminate H.
+  - destruct (id_in_form x q1).
+    + simpl in *. apply IHq1 in H.
+      unfold id_set_union. eapply set_union_intro1 in H.
+      exact H.
+    + destruct (id_in_form x q2).
+      * simpl in H. apply IHq2 in H.
+        unfold id_set_union. eapply set_union_intro2 in H.
+        exact H.
+      * discriminate H.
+  - destruct (id_in_form x q1).
+    + simpl in *. apply IHq1 in H.
+      unfold id_set_union. eapply set_union_intro1 in H.
+      exact H. 
+    + destruct (id_in_form x q2).
+      * simpl in H. apply IHq2 in H.
+        unfold id_set_union. eapply set_union_intro2 in H.
+        exact H.
+      * discriminate H.
+  - destruct (id_in_form x q1).
+    + simpl in *. apply IHq1 in H.
+      unfold id_set_union. eapply set_union_intro1 in H.
+      exact H. 
+    + destruct (id_in_form x q2).
+      * simpl in H. apply IHq2 in H.
+        unfold id_set_union. eapply set_union_intro2 in H.
+        exact H.
+      * discriminate H.
+  - apply IHq in H. exact H.
+  - destruct H as [H | H].
+    + rewrite eqb_id_eq. symmetry. exact H.
+    + inversion H.
+  - inversion H.
+  - apply set_union_elim in H. destruct H as [H | H].
+    + apply IHq1 in H. rewrite H. reflexivity.
+    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply set_union_elim in H. destruct H as [H | H].
+    + apply IHq1 in H. rewrite H. reflexivity.
+    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply set_union_elim in H. destruct H as [H | H].
+    + apply IHq1 in H. rewrite H. reflexivity.
+    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
+  - apply IHq in H. exact H.
+  Qed.
+
+(* ================================================================= *)
+(** ** Collecting Valuations *)
+
+Fixpoint collect_valuations (ids : set id) : list valuation :=
+  match ids with
+  | [] => []
+  | [x] => [x !-> true (*; x !-> false *)]
+  | x :: xs => 
+    let xs_vals := collect_valuations xs in
+    map (fun y => x !-> true ;; y) xs_vals ++ (* map (fun y => x !-> false ;; y) *) xs_vals
+  end.
