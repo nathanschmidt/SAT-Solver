@@ -61,7 +61,7 @@ Proof.
   intros x y. destruct (eqb_id x y) eqn:Exy.
   + left. rewrite eqb_id_eq in Exy. exact Exy.
   + right. rewrite eqb_id_neq in Exy. exact Exy.
-  Qed.
+  Defined.
 
 (* ================================================================= *)
 (** ** Abstract Syntax Tree / Grammar *)
@@ -565,43 +565,51 @@ Proof.
 (* ================================================================= *)
 (** ** Collecting Valuations *)
 
-Fixpoint collect_valuations (ids : set id) : list valuation :=
+(** Moving on, when given a set (without duplicates) of identifiers, we want
+    to generate a list of all possible valuations that our solver will need
+    to check to determine if a formula is satisfiable. *)
+
+Fixpoint collect_vals (ids : set id) : list valuation :=
   match ids with
   | [] => [empty_valuation]
   | x :: xs => 
-    let xs_vals := collect_valuations xs in
+    let xs_vals := collect_vals xs in
     map (fun y => x !-> true ;; y) xs_vals 
     ++ map (fun y => x !-> false ;; y) xs_vals
   end.
 
-Example collect_valuations_example : collect_valuations [x; y] = 
+Example collect_vals_example : collect_vals [x; y] = 
   [(x !-> true ;; y !-> true) ; (x !-> true ;; y !-> false) ;
    (x !-> false ;; y !-> true) ; (x !-> false ;; y !-> false)].
 Proof. reflexivity. Qed.
 
-Lemma collect_valuations_not_empty : forall (ids : set id),
-  collect_valuations ids <> [].
+(** With the use of one helper lemma, we show that for all identifiers, we
+    always generate valuations where they are both mapped to [true] and 
+    [false]. *)
+
+Lemma collect_vals_not_empty : forall (ids : set id),
+  collect_vals ids <> [].
 Proof.
   intros ids. induction ids as [| x xs]; 
   intros contra; simpl in contra.
   - discriminate contra.
   - apply app_eq_nil in contra. destruct contra as [contra1 contra2].
-    assert (Hlen : length (collect_valuations xs) >= 1).
-    { destruct (collect_valuations xs) as [| v vs].
+    assert (Hlen : length (collect_vals xs) >= 1).
+    { destruct (collect_vals xs) as [| v vs].
       - contradiction.
       - simpl. apply le_n_S. apply le_0_n. }
     assert (Hlen_map : length (
-            map (fun y : valuation => x !-> true;; y) (collect_valuations xs))
+            map (fun y : valuation => x !-> true;; y) (collect_vals xs))
             = 0).
     { rewrite contra1. reflexivity. }
     erewrite <- map_length in Hlen. rewrite Hlen_map in Hlen.
     inversion Hlen.
   Qed.
 
-Lemma collect_valuations_all_ids : forall (x : id) (ids : set id),
+Lemma collect_vals_all_ids : forall (x : id) (ids : set id),
   set_In x ids <->
-  (exists v, In v (collect_valuations ids) /\ v x = true) /\
-  (exists v, In v (collect_valuations ids) /\ v x = false).
+  (exists v, In v (collect_vals ids) /\ v x = true) /\
+  (exists v, In v (collect_vals ids) /\ v x = false).
 Proof.
   intros x ids. split; intros H.
   - (* -> *) split; generalize dependent x; 
@@ -609,8 +617,8 @@ Proof.
     + (* ids = [] *) inversion H.
     + (* ids = y :: ys *) simpl in H. destruct H as [H | H].
       * (* y = x *) subst. simpl.
-        destruct (collect_valuations ys) as [| v vs] eqn:Evals.
-        -- (* vals = [] *) apply collect_valuations_not_empty in Evals.
+        destruct (collect_vals ys) as [| v vs] eqn:Evals.
+        -- (* vals = [] *) apply collect_vals_not_empty in Evals.
            inversion Evals.
         -- (* vals = v :: vs *) exists (x !-> true ;; v). simpl. split.
            ++ left. reflexivity.
@@ -626,8 +634,8 @@ Proof.
     + (* ids = [] *) inversion H.
     + (* ids = y :: ys *) simpl in H. destruct H as [H | H].
       * (* y = x *) subst. simpl.
-        destruct (collect_valuations ys) as [| v vs] eqn:Evals.
-        -- (* vals = [] *) apply collect_valuations_not_empty in Evals.
+        destruct (collect_vals ys) as [| v vs] eqn:Evals.
+        -- (* vals = [] *) apply collect_vals_not_empty in Evals.
            inversion Evals.
         -- (* vals = v :: vs *) exists (x !-> false ;; v). split.
            ++ apply in_or_app. right. simpl. left. reflexivity.
@@ -670,3 +678,83 @@ Proof.
               ** assumption.
               ** rewrite override_neq in H22; assumption.
   Qed.
+
+(* ================================================================= *)
+(** ** Searching Through Valuations *)
+
+(** The final recursive function needed checks if any valuation [v] in a list 
+    satisfies a given formula and returns [Some v] if such a [v] is found or
+    [None] if not. *)
+
+Fixpoint check_vals (p : form) (l : list valuation) : option valuation :=
+  match l with
+  | [] => None
+  | v :: vs => 
+    if interp v p
+      then Some v
+    else
+      check_vals p vs
+  end.
+
+(** Sticking all bits together, we can now define our brute-force solver. *)
+
+Definition find_valuation (p : form) : option valuation :=
+  let optim_p := optim p in
+  let ids := collect_ids optim_p in
+  let vals := collect_vals ids in
+  check_vals optim_p vals.
+
+Definition solver (p : form) : bool :=
+  match find_valuation p with
+  | Some _ => true
+  | None => false
+  end.
+
+Example solver_pos_example1 : solver <{ (x \/ ~y) /\ (~x \/ y) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_pos_example2 : solver <{ ~y -> (x \/ y) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_pos_example3 : 
+  solver <{ ((x -> y) \/ (x /\ ~x)) /\ (y /\ z) }> = true.
+Proof. reflexivity. Qed.
+
+Example solver_neg_example1 : solver <{ x /\ ~x }> = false.
+Proof. reflexivity. Qed. 
+
+Example solver_neg_example2 : solver <{ (y -> x) /\ ~x /\ y /\ z }> = false.
+Proof. reflexivity. Qed.
+
+(* ================================================================= *)
+(** ** Soundness *)  
+
+(** Let us verify that the solver doesn't return false positives, meaning a
+    formula is indeed satisfiable if the solver returns [true] for it. *)
+
+Lemma solver_sound : forall (p : form),
+  solver p = true -> satisfiable p.
+Proof.
+  intros p H. unfold solver in H. 
+  destruct (find_valuation p) eqn:Epv; [clear H | discriminate H].
+  exists v. unfold find_valuation in Epv.
+  unfold check_vals in Epv.
+  induction 
+  (collect_vals (collect_ids (optim p)))
+  as [| v' vs' IHvs'].
+  - discriminate Epv.
+  - destruct (interp v' (optim p)) eqn:Eiv'.
+    + injection Epv. intros Evv'. subst.
+      rewrite <- optim_correct in Eiv'. exact Eiv'.
+    + apply IHvs'. exact Epv.
+  Qed.
+
+(* ================================================================= *)
+(** ** Completeness *) 
+
+(** As final step towards the verification of our decision procedure, we now
+    prove that if a formula is satisfiable, then our solver will correctly
+    return [true] for it. *)
+
+Lemma solver_complete : forall (p : form),
+  satisfiable p -> solver p = true.
