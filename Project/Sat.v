@@ -342,7 +342,7 @@ Proof.
   Qed.
 
 (* ================================================================= *)
-(** ** Minimizing Property *)
+(** ** Minimization Property *)
 
 (** Now, we show that we actually gain something by using the optimizer, 
     meaning it indeed transforms any formula to its minimal form. *)
@@ -737,11 +737,8 @@ Lemma solver_sound : forall (p : form),
 Proof.
   intros p H. unfold solver in H. 
   destruct (find_valuation p) eqn:Epv; [clear H | discriminate H].
-  exists v. unfold find_valuation in Epv.
-  unfold check_vals in Epv.
-  induction 
-  (collect_vals (collect_ids (optim p)))
-  as [| v' vs' IHvs'].
+  exists v. unfold find_valuation in Epv. unfold check_vals in Epv.
+  induction (collect_vals (collect_ids (optim p))) as [| v' vs' IHvs'].
   - discriminate Epv.
   - destruct (interp v' (optim p)) eqn:Eiv'.
     + injection Epv. intros Evv'. subst.
@@ -756,5 +753,95 @@ Proof.
     prove that if a formula is satisfiable, then our solver will correctly
     return [true] for it. *)
 
+Lemma interp_eq : forall (v v' : valuation) (p : form),
+  (forall (x : id), id_in_form x p = true -> v x = v' x) ->
+  interp v p = interp v' p.
+Proof.
+  intros v v' p H.
+  induction p as [x | b' | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                  q1 IHq1 q2 IHq2 | q IHq].
+  - (* x *) assert (Hx : id_in_form x x = true). 
+    { simpl. rewrite eqb_id_refl. reflexivity. }
+    apply H in Hx. simpl. exact Hx.
+  - (* bool *) reflexivity.
+  - (* q1 /\ q2 *) simpl. f_equal.
+    + apply IHq1. intros x Hq1.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq1. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+    + apply IHq2. intros x Hq2.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq2. rewrite orb_true_r. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+  - (* q1 \/ q2 *) simpl. f_equal.
+    + apply IHq1. intros x Hq1.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq1. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+    + apply IHq2. intros x Hq2.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq2. rewrite orb_true_r. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+  - (* q1 -> q2 *) simpl. f_equal.
+    + f_equal. apply IHq1. intros x Hq1.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq1. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+    + apply IHq2. intros x Hq2.
+      simpl in H.
+      assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true).
+      { rewrite Hq2. rewrite orb_true_r. reflexivity. }
+      apply H in Hq1q2. exact Hq1q2.
+  - (* ~q *) simpl. f_equal. 
+    apply IHq. intros x Hq. apply H. 
+    simpl. exact Hq.
+  Qed.
+
+(* Lemma test : forall (v : valuation) (p : form) (b : bool),
+  interp v p = b ->
+  exists (v' : valuation), In v' (collect_vals (collect_ids p)) /\
+  interp v p = interp v' p.
+Proof.
+  intros v p b H. induction p as [x | b' | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                                  q1 IHq1 q2 IHq2 | q IHq].
+  - (* x *) destruct b.
+    + (* true *) exists (x !-> true). split.
+      * simpl. left. reflexivity.
+      * rewrite H. simpl. rewrite override_eq. reflexivity.
+    + (* false *) exists (x !-> false). split.
+      * simpl. right. left. reflexivity.
+      * rewrite H. simpl. rewrite override_eq. reflexivity.
+  - (* bool *) exists empty_valuation. split.
+    + simpl. left. reflexivity.
+    + simpl. reflexivity.
+  - (* q1 /\ q2 *) simpl.
+  Admitted. *)
+
 Lemma solver_complete : forall (p : form),
   satisfiable p -> solver p = true.
+Proof.
+  intros p. intros H.
+  unfold satisfiable in H. destruct H as [v H].
+  unfold solver. unfold find_valuation.
+  rewrite optim_correct in H.
+  induction (optim p) as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                          q1 IHq1 q2 IHq2 | q IHq]; simpl.
+  - (* x *) rewrite override_eq. reflexivity.
+  - (* bool *) destruct b.
+    + (* true *) reflexivity.
+    + (* false *) discriminate H.
+  - (* q1 /\ q2 *) simpl in H. rewrite andb_true_iff in H.
+    destruct H as [H1 H2].
+    destruct (check_vals q1 (collect_vals (collect_ids q1))) as [v1 |] eqn:E1.
+    + (* Some v1 *) destruct (check_vals q2 (collect_vals (collect_ids q2))) 
+      as [v2 | ] eqn:E2.
+      * (* Some v2 *) destruct (collect_vals (collect_ids q1)) as [| h1 t1].
+        -- (* [] *) discriminate E1.
+        -- (* h1 :: t1 *) simpl in E1. unfold check_vals in E1. (* Some v2 *) admit.
+      * (* None *) apply IHq2 in H2. discriminate H2. 
+    + (* None *) apply IHq1 in H1. discriminate H1.
