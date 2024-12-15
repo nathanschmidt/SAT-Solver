@@ -802,6 +802,76 @@ Proof.
     simpl. exact Hq.
   Qed.
 
+Lemma testtest : forall (v1 v2 : valuation) (ids1 ids2 : set id),
+  In v1 (collect_vals ids1) -> In v2 (collect_vals ids2) ->
+  In (fun x => if existsb (eqb_id x) ids1 then v1 x else v2 x) 
+    (collect_vals (id_set_union ids1 ids2)).
+Proof. Admitted.
+
+Lemma existsb_eqb_iff_in : forall (x : id) (l : list id),
+  existsb (eqb_id x) l = true <-> In x l.
+Proof.
+  intros x l. split; intros H; induction l as [| hd tl IHtl].
+  - discriminate H.
+  - simpl in *. destruct (eqb_id x hd) eqn:Exhd.
+    + left. rewrite eqb_id_eq in Exhd. symmetry. exact Exhd.
+    + right. simpl in H. apply IHtl in H. exact H.
+  - inversion H.
+  - simpl in *; destruct (eqb_id x hd) eqn:Efi; destruct H as [H | H];
+    try reflexivity.
+    + rewrite eqb_id_neq in Efi. symmetry in H. 
+      apply Efi in H. inversion H.
+    + apply IHtl in H. rewrite H. reflexivity.
+  Qed.
+
+Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form),
+  exists (v' : valuation), 
+    In v' (collect_vals (collect_ids p)) /\ 
+    (forall (x : id), id_in_form x p = true -> v x = v' x).
+Proof. 
+  intros v p. induction p as [x | b' | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                              q1 IHq1 q2 IHq2 | q IHq].
+  - (* x *) assert (Hb : exists (b : bool), v x = b).
+    { destruct (v x); [exists true | exists false]; reflexivity. }
+    destruct Hb as [b Hb]. 
+    exists (x !-> b). split.
+    + destruct b.
+      * (* true *) simpl. left. reflexivity.
+      * (* false *) simpl. right. left. reflexivity.
+    + intros x' Hin.
+      simpl in Hin. rewrite eqb_id_eq in Hin. subst.
+      rewrite override_eq. reflexivity.
+  - (* bool *) exists empty_valuation. split.
+    + simpl. left. reflexivity.
+    + intros x Hin. discriminate Hin.
+  - (* q1 /\ q2 *) simpl.
+    destruct IHq1 as [v1 [IHq11 IHq12]]. destruct IHq2 as [v2 [IHq21 IHq22]].
+    exists 
+      (fun y => if existsb (eqb_id y) (collect_ids q1) then v1 y else v2 y). 
+    split.
+    + apply testtest; assumption.
+    + intros x H. rewrite orb_true_iff in H. destruct H as [H | H].
+      * destruct (existsb (eqb_id x) (collect_ids q1)) eqn:Ee1.
+        -- apply IHq12. assumption.
+        -- assert (contra : ~ In x (collect_ids q1)).
+           { intros contra. rewrite <- existsb_eqb_iff_in in contra.
+             rewrite Ee1 in contra. discriminate contra. }
+           rewrite <- id_in_form_iff_in_collect_ids in contra.
+           apply contra in H. inversion H.
+      * destruct (existsb (eqb_id x) (collect_ids q1)) eqn:Ee1.
+        -- rewrite existsb_eqb_iff_in in Ee1.
+           rewrite <- id_in_form_iff_in_collect_ids in Ee1.
+           apply IHq12 in Ee1. assumption.
+        -- destruct (existsb (eqb_id x) (collect_ids q2)) eqn:Ee2.
+           ++ apply IHq22 in H. assumption.
+           ++ assert (contra : ~ In x (collect_ids q2)).
+              { intros contra. rewrite <- existsb_eqb_iff_in in contra.
+                rewrite Ee2 in contra. discriminate contra. }
+              rewrite <- id_in_form_iff_in_collect_ids in contra.
+              apply contra in H. inversion H.
+    - (* q1 \/ q2 *)  
+  Admitted.
+
 (* Lemma test : forall (v : valuation) (p : form) (b : bool),
   interp v p = b ->
   exists (v' : valuation), In v' (collect_vals (collect_ids p)) /\
