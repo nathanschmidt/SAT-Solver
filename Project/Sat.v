@@ -841,10 +841,10 @@ Proof.
   (forall (x : id), ~ In x ids -> v x = false).
 Proof. Admitted. *)
 
-Lemma xyz : forall (v : valuation) (vals : list valuation) (x : id) (b : bool),
+(* Lemma xyz : forall (v : valuation) (vals : list valuation) (x : id) (b : bool),
   In v (map (fun v => x !-> v x ;; v) vals) ->
   In v vals.
-Proof. Admitted.
+Proof. Admitted. *)
   (* intros v vals x b H. induction vals as [| h t IHt].
   - simpl in H. inversion H.
   - rewrite in_map_iff in H. simpl in *. destruct H as [H | H].
@@ -858,24 +858,58 @@ Proof. Admitted.
         exists h. 
     + right. apply IHt. exact H. *)
 
-Lemma blub : forall (x : id) (ids : set id) (v : valuation),
+(* Lemma blub : forall (x : id) (ids : set id) (v : valuation),
   ~ set_In x ids -> 
   In v (collect_vals (ids ++ [x])) <-> In v (collect_vals (x :: ids)).
 Proof. 
   intros x ids v. 
-  split; induction ids as [| y ys IHys]; intros Hin.
-  - (* ->, [] *) simpl in *. exact Hin.
-  - (* ->, y :: ys *) simpl in Hin. rewrite in_app_iff in Hin.
-    destruct Hin as [Hin | Hin].
-    + 
-  Admitted.
+  split; induction ids as [| y ys IHys]; intros Hin; simpl in *.
+  - (* ->, [] *) exact Hin.
+  - (* ->, y :: ys *) apply not_or_and in H. destruct H as [H1 H2].
+    rewrite in_app_iff in Hin. rewrite in_map_iff in Hin.
+    destruct Hin as [[v' [Hin1 Hin2]] | Hin].
+    + destruct (v' y) eqn:Evy.
+      * rewrite <- Evy in Hin1. rewrite override_same in Hin1.
+        subst. apply (IHys H2) in Hin2.
+        rewrite in_app_iff. left. rewrite in_map_iff.
+        rewrite in_app_iff in Hin2. destruct Hin2 as [Hin2 | Hin2].
+        -- rewrite in_map_iff in Hin2. destruct Hin2 as [v' [Hin21 Hin22]].
+           exists v'. split.
+           ++ exact Hin21.
+           ++ rewrite in_app_iff. right. exact Hin22.
+        -- destruct (v x) eqn:Evx.
+           ++ exists v. split.
+             ** rewrite <- Evx. rewrite override_same. reflexivity.
+             ** rewrite in_app_iff. right. exact Hin2.
+           ++  
+  Admitted. *)
 
 Lemma abc : forall (v : valuation) (ids : set id) (x : id),
   In v (collect_vals ids) ->
   In v (collect_vals (id_set_add x ids)).
 Proof.
-  intros v ids x H.
-  assert (Hin : {set_In x ids} + {~ set_In x ids}).
+  intros v ids. generalize dependent v.
+  induction ids as [| y ys IHys]; intros v x H; simpl in *.
+  - destruct H as [H | H].
+    + right. left. exact H.
+    + inversion H.
+  - rewrite in_app_iff in H. destruct H as [H | H].
+    + rewrite in_map_iff in H. destruct H as [v' [H1 H2]]. 
+      destruct (id_eq_dec x y).
+      * subst. simpl. rewrite in_app_iff. left.
+        rewrite in_map_iff. exists v'. split.
+        -- reflexivity.
+        -- assumption.
+      * simpl. rewrite in_app_iff. rewrite in_map_iff. left.
+        exists v'. split.
+        -- assumption.
+        -- apply IHys. exact H2.
+    + destruct (id_eq_dec x y).
+      * simpl. rewrite in_app_iff. right. exact H.
+      * simpl. rewrite in_app_iff. right.
+        apply IHys. exact H.
+  Qed.
+  (* assert (Hin : {set_In x ids} + {~ set_In x ids}).
   { apply (set_In_dec id_eq_dec). }
   destruct Hin as [Hin | Hin].
   - apply id_set_add_no_effect in Hin. rewrite Hin. exact H.
@@ -883,7 +917,7 @@ Proof.
     + simpl. rewrite in_app_iff. right. exact H.
     + exact Hin.
     + exact Hin.
-  Qed.
+  Qed. *)
   (* intros v ids. 
   generalize dependent v. 
   induction ids as [| y ys IHys]; intros v H.
