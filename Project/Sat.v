@@ -203,6 +203,25 @@ Proof.
   intros x'. destruct (eqb_id x x'); reflexivity.
   Qed.
 
+Lemma override_permute : forall (v : valuation) (x1 x2 : id) (b1 b2 : bool),
+  x2 <> x1 ->
+  (x1 !-> b1 ;; x2 !-> b2 ;; v)
+  =
+  (x2 !-> b2 ;; x1 !-> b1 ;; v).
+Proof.
+  intros v x1 x2 b1 b2 H. unfold override.
+  apply functional_extensionality.
+  intros x. destruct (eqb_id x1 x) eqn:Ex1x.
+  - destruct (eqb_id x2 x) eqn:Ex2x.
+    + rewrite eqb_id_eq in Ex1x. rewrite Ex1x in H. 
+      rewrite eqb_id_eq in Ex2x. rewrite Ex2x in H.
+      exfalso. apply H. reflexivity.
+    + reflexivity.
+  - destruct (eqb_id x2 x) eqn:Ex2x.
+    + reflexivity.
+    + reflexivity.
+  Qed.
+
 (* ================================================================= *)
 (** ** Interpreter *)
 
@@ -953,6 +972,55 @@ Proof.
     exact H.
   Qed.
 
+Lemma cba : forall (v : valuation) (x : id) (ids : set id),
+  In v (collect_vals ids) ->
+  In (x !-> true ;; v) (collect_vals (id_set_add x ids)).
+Proof. 
+  intros v x ids. generalize dependent x. generalize dependent v.
+  induction ids as [| y ys IHys]; intros v x H.
+  - simpl in H. destruct H as [H | H].
+    + subst. simpl. left. reflexivity.
+    + inversion H.
+  - simpl in *. destruct (id_eq_dec x y).
+    + subst. rewrite in_app_iff in H. destruct H as [H | H].
+      * rewrite in_map_iff in H. destruct H as [v' [H1 H2]].
+        subst. rewrite override_shadow. simpl.
+        rewrite in_app_iff. left.
+        rewrite in_map_iff. exists v'. split.
+        -- reflexivity.
+        -- exact H2.
+      * simpl. rewrite in_app_iff. left.
+        rewrite in_map_iff. exists v. split.
+        -- reflexivity.
+        -- exact H.
+    + simpl. rewrite in_app_iff in H. destruct H as [H | H].
+      * rewrite in_map_iff in H. destruct H as [v' [H1 H2]].
+        subst. rewrite in_app_iff. left.
+        rewrite in_map_iff. exists (x !-> true ;; v'). split.
+        -- apply override_permute. assumption.
+        -- apply IHys. exact H2.
+      * rewrite in_app_iff. right. apply IHys. exact H.
+  Qed.
+
+Lemma testtest2 : forall (v : valuation) (ids1 ids2 : set id),
+  In v (collect_vals ids2) ->
+  In v (collect_vals (id_set_union ids1 ids2)).
+Proof.
+  intros v ids1 ids2. generalize dependent ids1. generalize dependent v.
+  induction ids2 as [| x xs IHxs]; intros v ids1 H.
+  - (* ids2 = [] *) destruct ids1 as [| y ys].
+    + (* ids1 = [] *) simpl. exact H.
+    + (* ids1 = y :: ys *) simpl. destruct H as [H | H].
+      * subst. rewrite in_app_iff. right. 
+        apply empty_valuation_in_collect_vals.
+      * inversion H.
+  - (* ids2 =  x :: xs *) simpl in H. rewrite in_app_iff in H.
+    destruct H as [H | H].
+    + rewrite in_map_iff in H. destruct H as [v' [H1 H2]].
+      subst. simpl. apply cba. apply IHxs. exact H2.
+    + simpl. apply abc. apply IHxs. exact H.
+  Qed.
+
 (* Lemma existsb_eqb_iff_in : forall (x : id) (l : list id),
   existsb (eqb_id x) l = true <-> In x l.
 Proof.
@@ -1001,6 +1069,33 @@ Proof.
       exists v'. split.
       * apply testtest. exact Hx1.
       * assumption.
+    + apply IHq2 in Hx. destruct Hx as [v' [Hx1 Hx2]].
+      exists v'. split.
+      * apply testtest2. exact Hx1.
+      * assumption.
+  - (* q1 \/ q2 *) simpl in *.
+    rewrite orb_true_iff in Hx. destruct Hx as [Hx | Hx].
+    + apply IHq1 in Hx. destruct Hx as [v' [Hx1 Hx2]].
+      exists v'. split.
+      * apply testtest. exact Hx1.
+      * assumption.
+    + apply IHq2 in Hx. destruct Hx as [v' [Hx1 Hx2]].
+      exists v'. split.
+      * apply testtest2. exact Hx1.
+      * assumption.
+  - (* q1 -> q2 *) simpl in *.
+    rewrite orb_true_iff in Hx. destruct Hx as [Hx | Hx].
+    + apply IHq1 in Hx. destruct Hx as [v' [Hx1 Hx2]].
+      exists v'. split.
+      * apply testtest. exact Hx1.
+      * assumption.
+    + apply IHq2 in Hx. destruct Hx as [v' [Hx1 Hx2]].
+      exists v'. split.
+      * apply testtest2. exact Hx1.
+      * assumption.
+  - (* ~q *) simpl in Hx. apply IHq in Hx.
+    simpl. exact Hx.
+  Qed.
     (* exists 
       (fun y => if existsb (eqb_id y) (collect_ids q1) then v1 y else v2 y). 
     split.
