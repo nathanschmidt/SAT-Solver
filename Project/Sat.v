@@ -1021,6 +1021,69 @@ Proof.
     + simpl. apply abc. apply IHxs. exact H.
   Qed.
 
+(* Lemma lets_try_that_out : forall (v : valuation) (p : form),
+  exists (v' : valuation),
+    In v' (collect_vals (collect_ids p)) /\
+    interp v p = interp v' p.
+Proof.
+  intros v p.
+  induction p as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                  q1 IHq1 q2 IHq2 | q IHq].
+  - (* x *) simpl. destruct (v x) eqn:Evx.
+    + exists (x !-> true). split.
+      * left. reflexivity.
+      * rewrite <- Evx. rewrite override_eq. reflexivity.
+    + exists empty_valuation. split.
+      * right. left. reflexivity.
+      * reflexivity.
+  - (* bool *) simpl. exists empty_valuation. 
+    split; [left | idtac]; reflexivity.
+  - (* q1 /\ q2 *) simpl. destruct IHq1 as [v1 [IHq11 IHq12]].
+    destruct IHq2 as [v2 [IHq21 IHq22]]. *)
+
+Lemma sheesh : forall (v1 v2 : valuation) (ids1 ids2 : set id) (b b' : bool),
+  In v1 (collect_vals ids1) -> In v2 (collect_vals ids2) ->
+  In (fun x => if b then v1 x else if b' then v2 x else empty_valuation x) 
+  (collect_vals (id_set_union ids1 ids2)).
+Proof.
+  intros v1 v2 ids1 ids2. generalize dependent ids1.
+  generalize dependent v2. generalize dependent v1.
+  induction ids2 as [| x xs IHxs];
+  intros v1 v2 ids1 b b' Hv1 Hv2; simpl in *.
+  - destruct Hv2 as [Hv2 | Hv2]; destruct b; destruct b'; subst; auto.
+    + apply empty_valuation_in_collect_vals.
+    + apply empty_valuation_in_collect_vals.
+    + inversion Hv2.
+    + inversion Hv2.
+  - destruct b; destruct b'; 
+    rewrite in_app_iff in Hv2; rewrite in_map_iff in Hv2.
+    destruct Hv2 as [[v'' [Hv21 Hv22]] | Hv2];
+    subst.
+    + apply abc. 
+      apply (IHxs v1 v'' ids1 true false Hv1) in Hv22.
+      assumption.
+    + apply abc. 
+      apply (IHxs v1 v2 ids1 true false Hv1) in Hv2.
+      assumption.
+    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
+      * apply abc.
+        apply (IHxs v1 v' ids1 true false Hv1) in Hv22.
+        assumption.
+      * apply abc.
+        apply (IHxs v1 v2 ids1 true false Hv1) in Hv2.
+        assumption.
+    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
+      * apply cba.
+        apply (IHxs v1 v' ids1 false true Hv1) in Hv22.
+        assumption.
+      * apply abc.
+        apply (IHxs v1 v2 ids1 false true Hv1) in Hv2.
+        assumption.
+    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
+      * apply empty_valuation_in_collect_vals.
+      * apply empty_valuation_in_collect_vals.
+  Qed.
+
 (* Lemma existsb_eqb_iff_in : forall (x : id) (l : list id),
   existsb (eqb_id x) l = true <-> In x l.
 Proof.
@@ -1037,12 +1100,83 @@ Proof.
     + apply IHtl in H. rewrite H. reflexivity.
   Qed. *)
 
-Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form) (x : id),
-  id_in_form x p = true ->
-  exists (v' : valuation), 
-    In v' (collect_vals (collect_ids p)) /\ v x = v' x.
+(* Lemma v_false_in_collect_vals : forall (v : valuation) (p : form),
+  (forall (x : id), id_in_form x p = false -> v x = false) ->
+  In v (collect_vals (collect_ids p)).
 Proof.
-  intros v p x Hx. induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+  intros v p. generalize dependent v.
+  induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                  q1 IHq1 q2 IHq2 | q IHq]; intros v H.
+  - (* y *) simpl in *. destruct (v y) eqn:Evy.
+    + left. rewrite <- Evy. 
+      apply functional_extensionality. intros x.
+      destruct (eqb_id x y) eqn:Exy.
+      * rewrite eqb_id_eq in Exy. subst.
+        rewrite override_eq. reflexivity.
+      * rewrite override_neq.
+        -- apply H in Exy. rewrite Exy. reflexivity.
+        -- rewrite eqb_id_neq in Exy. auto.
+    + right. left.
+      apply functional_extensionality. intros x.
+      destruct (eqb_id x y) eqn:Exy.
+      * rewrite eqb_id_eq in Exy. subst.
+        rewrite Evy. reflexivity.
+      * apply H in Exy. rewrite Exy. reflexivity.
+  - (* bool *) simpl in *. left.
+    apply functional_extensionality. intros x.
+    unfold empty_valuation. symmetry.
+    apply H. reflexivity.
+  - (* q1 /\ q2 *) simpl in *. *)
+
+Lemma equiv_v_exists : forall (v : valuation) (p : form),
+  exists (v' : valuation),
+    (forall (x : id), id_in_form x p = true -> v x = v' x) /\
+    (forall (x : id), id_in_form x p = false -> v' x = false).
+Proof. Admitted.
+
+Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form),
+  exists (v' : valuation),
+    (forall (x : id), id_in_form x p = true -> v x = v' x) /\
+    In v' (collect_vals (collect_ids p)).
+Proof.
+  intros v p. induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+                                   q1 IHq1 q2 IHq2 | q IHq].
+  - (* y *) exists (y !-> v y). split.
+    + intros x H. simpl in H. rewrite eqb_id_eq in H. subst.
+      rewrite override_eq. reflexivity.
+    + simpl. destruct (v y).
+      * left. reflexivity.
+      * right. left. apply functional_extensionality.
+        intros x. destruct (id_eq_dec y x).
+        -- subst. rewrite override_eq. reflexivity.
+        -- rewrite override_neq; [reflexivity | assumption].
+  - (* bool *) exists empty_valuation. split.
+    + intros x H. inversion H.
+    + apply empty_valuation_in_collect_vals.
+  - (* q1 /\ q2 *) destruct IHq1 as [v1 [IHq11 IHq12]].
+    destruct IHq2 as [v2 [IHq21 IHq22]]. simpl.
+    exists (fun y => if id_in_form y q1 then v1 y else if id_in_form y q2 then v2 y else empty_valuation y).
+    split.
+    + admit.
+    + admit. (* eapply (sheesh IHq12). *)
+  Admitted.
+
+    (* destruct H as [H | [H | H]].
+    + exists v1. split.
+      * intros x _. apply IHq11. apply H.
+      * apply testtest. exact IHq12.
+    + exists v2. split.
+      * intros x _. apply IHq21. apply H.
+      * apply testtest2. exact IHq22.
+    + exists v1. split.
+      * intros x H'. rewrite orb_true_iff in H'. destruct H' as [H' | H'].
+        -- apply IHq11. exact H'.
+        -- 
+      * apply testtest. exact IHq12.
+    + 
+  Admitted. *)
+
+  (* intros v p x Hx. induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
                                    q1 IHq1 q2 IHq2 | q IHq].
   - (* y *) simpl in Hx. rewrite eqb_id_eq in Hx. subst. 
     assert (Hb : exists (b : bool), v y = b).
@@ -1095,32 +1229,7 @@ Proof.
       * assumption.
   - (* ~q *) simpl in Hx. apply IHq in Hx.
     simpl. exact Hx.
-  Qed.
-    (* exists 
-      (fun y => if existsb (eqb_id y) (collect_ids q1) then v1 y else v2 y). 
-    split.
-    + apply testtest; assumption.
-    + intros x H. rewrite orb_true_iff in H. destruct H as [H | H].
-      * destruct (existsb (eqb_id x) (collect_ids q1)) eqn:Ee1.
-        -- apply IHq12. assumption.
-        -- assert (contra : ~ In x (collect_ids q1)).
-           { intros contra. rewrite <- existsb_eqb_iff_in in contra.
-             rewrite Ee1 in contra. discriminate contra. }
-           rewrite <- id_in_form_iff_in_collect_ids in contra.
-           apply contra in H. inversion H.
-      * destruct (existsb (eqb_id x) (collect_ids q1)) eqn:Ee1.
-        -- rewrite existsb_eqb_iff_in in Ee1.
-           rewrite <- id_in_form_iff_in_collect_ids in Ee1.
-           apply IHq12 in Ee1. assumption.
-        -- destruct (existsb (eqb_id x) (collect_ids q2)) eqn:Ee2.
-           ++ apply IHq22 in H. assumption.
-           ++ assert (contra : ~ In x (collect_ids q2)).
-              { intros contra. rewrite <- existsb_eqb_iff_in in contra.
-                rewrite Ee2 in contra. discriminate contra. }
-              rewrite <- id_in_form_iff_in_collect_ids in contra.
-              apply contra in H. inversion H.
-    - (* q1 \/ q2 *) *)
-  Admitted.
+  Qed. *)
 
 (* Lemma test : forall (v : valuation) (p : form) (b : bool),
   interp v p = b ->
@@ -1149,7 +1258,34 @@ Proof.
   unfold satisfiable in H. destruct H as [v H].
   unfold solver. unfold find_valuation.
   rewrite optim_correct in H.
-  induction (optim p) as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
+  assert (Hv' : exists (v' : valuation),
+    (forall (x : id), id_in_form x (optim p) = true -> v x = v' x) /\
+    (forall (x : id), id_in_form x (optim p) = false -> v' x = false)).
+  { apply equiv_v_exists. }
+  destruct Hv' as [v' [Hv'1 Hv'2]].
+  (* apply v_false_in_collect_vals in Hv'2.
+  apply interp_eq in Hv'1.
+  (* assert (Hv' : exists (v' : valuation),
+    In v' (collect_vals (collect_ids (optim p))) /\
+    forall (x : id),
+      id_in_form x (optim p) = true -> v x = v' x).
+  { apply v_equiv_in_collect_vals. }
+  destruct Hv' as [v' [Hv'1 Hv'2]].
+  apply interp_eq in Hv'2. *)
+  induction (collect_vals (collect_ids (optim p))).
+  - simpl in Hv'2. inversion Hv'2.
+  - simpl in Hv'2. destruct Hv'2 as [Hv'2 | Hv'2].
+    + subst. simpl. rewrite H in Hv'1. rewrite <- Hv'1.
+      reflexivity.
+    + apply IHl in Hv'2. simpl.
+      destruct (interp a (optim p)).
+      * reflexivity.
+      * exact Hv'2.
+  - auto.
+  Qed. *)
+  Admitted.
+
+  (* induction (optim p) as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
                           q1 IHq1 q2 IHq2 | q IHq]; simpl.
   - (* x *) rewrite override_eq. reflexivity.
   - (* bool *) destruct b.
@@ -1165,4 +1301,4 @@ Proof.
         -- (* h1 :: t1 *) simpl in E1. unfold check_vals in E1. (* Some v2 *) admit.
       * (* None *) apply IHq2 in H2. discriminate H2. 
     + (* None *) apply IHq1 in H1. discriminate H1.
-  Admitted.
+  Admitted. *)
