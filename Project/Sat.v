@@ -71,7 +71,7 @@ Proof.
 (** We can now specify the type of formulas [form] through a set of rules. *)
 
 Inductive form : Type :=
-  | (* x *) form_var (x : id)
+  | (* x *) form_id (x : id)
   | (* true, false *) form_bool (b : bool)
   | (* p /\ q *) form_conj (p : form) (q : form)
   | (* p \/ q *) form_disj (p : form) (q : form)
@@ -85,7 +85,7 @@ Inductive form : Type :=
     of formulas in Coq. *)
 
 (* TODO: what am I doing here? *)
-Coercion form_var : id >-> form. (* TODO: what am I doing here? *)
+Coercion form_id : id >-> form. (* TODO: what am I doing here? *)
 Declare Custom Entry form. 
 Notation "<{ p }>" := p (p custom form at level 99).
 Notation "( p )" := p (in custom form, p at level 90). 
@@ -176,7 +176,7 @@ Proof.
   rewrite eqb_id_refl. reflexivity.
   Qed.
 
-Theorem override_neq : forall (v : valuation) (x1 x2 : id) (b : bool),
+Lemma override_neq : forall (v : valuation) (x1 x2 : id) (b : bool),
   x1 <> x2 ->
   (x1 !-> b ;; v) x2 = v x2.
 Proof.
@@ -185,7 +185,7 @@ Proof.
   reflexivity.
   Qed.
 
-Theorem override_same : forall (v : valuation) (x : id),
+Lemma override_same : forall (v : valuation) (x : id),
   (x !-> v x ;; v) = v.
 Proof.
   intros v x. unfold override.

@@ -21,6 +21,18 @@
 
 \usepackage[a4paper,margin=2.5cm]{geometry}
 
+\usepackage[%
+  backend=biber,
+  url=false,
+  style=numeric, % alphabetic, numeric
+  maxnames=4,
+  minnames=3,
+  maxbibnames=99,
+  giveninits,
+  uniquename=init]{biblatex}
+
+\bibliography{bibliography}
+
 \begin{document}
 %
 \title{Formal Software Verification Project Report\newline{}SAT Solver}
@@ -53,6 +65,7 @@ The abstract should briefly summarize the contents of the paper in
 \input{sections/01_introduction}
 \input{sections/02_challenges}
 \input{sections/03_conclusion}
-\input{sections/04_bibliography}
+
+\printbibliography{}
 
 \end{document}

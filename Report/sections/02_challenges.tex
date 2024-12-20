@@ -1,4 +1,55 @@
-\section{Encountered Problems}
+\section{Implementation and Encountered Problems}
+
+In this section, we present our implementation choices and compare them to discarded alternatives to justify them. 
+We also describe what difficulties we encountered during development and how we addressed them.
+
+\subsection{Syntax}
+
+First, we formalize the abstract syntax of boolean formulas containing conjunctions, disjunctions, implications, and negations. 
+
+\subsubsection{Abstract Syntax.}
+
+We state an inductive definition of the type \texttt{form} with a set of constructors describing how to build up a formula:
+\begin{equation}
+    p, q ::= x\;|\;\texttt{true}\;|\;\texttt{false}\;|\;p \land q\;|\;p \lor q\;|\;p \rightarrow q\;|\;\neg p
+\end{equation}
+
+For identifiers, we introduce the type \texttt{id} with a single constructor \texttt{Id} that wraps a string. We also define an equality function comparing two identifiers and returning \texttt{true} if and only if their contained strings are equal. To ease proof development in the rest of the project, we prove some basic lemmas about the function by case distinction, namely \emph{reflexivity}, \emph{equivalence with propositional equality}, and \emph{decidability} of equality of identifiers.
+
+\subsubsection{Concrete Syntax.}
+
+To make reading and writing formulas easier, we use \textsc{Coq}'s \texttt{Notation}s system, as well as a \texttt{Coercion} from an identifier as a formula. 
+The main difficulty lies in assigning precedence levels to the individual constructors that pay respect to the commonly assumed binding of operators. 
+Given the \emph{binds stronger} relation ($>$), that is:
+\begin{equation}
+    \neg > \land > \lor >\,\rightarrow
+\end{equation}
+For example, $x \lor \neg y \land z \rightarrow \texttt{false}$ is interpreted as $(x \lor ((\neg y) \land z) \rightarrow \texttt{false}$. 
+
+\subsection{Semantics}
+
+Now that we can write a formula in \textsc{Coq}, we want to define its semantics, i.e., if we interpret it as \texttt{true} or \texttt{false}.
+
+\subsubsection{Valuations.}
+
+To do so, we need to know which boolean values to replace all identifiers occurring in a formula with.
+Therefore, we define the type \texttt{valuation}. 
+A valuation is a function that, being passed an identifier, returns \texttt{true} or \texttt{false}, or, in other words, a valuation is a total map from identifiers to booleans. Our implementation is analogous to the total map defined by Pierce et al. in \cite{pierceSF}.
+% An empty valuation is a valuation that returns \texttt{false} for all arguments.
+
+Again, to simply writing and reading valuations, we introduce a \textsc{Notation} \texttt{x !-> b ;; v} to override a valuation \texttt{v} with a new value \texttt{b} for \texttt{x}. At first, we used just a single semicolon, but this causes conflicts with list notations. 
+
+We also specify some lemmas of \cite{pierceSF} for later reasonings. Their proofs rely on the functional extensionality axiom, stating that two functions are equal if and only if their applications to all their possible arguments are equal. It is known to be compatible with \textsc{Coq}'s logical core.
+
+\subsubsection{Interpreter.}
+
+The \texttt{valuation} type allows us to define a recursive interpreter function.
+Applied to a valuation and a formula, it returns \texttt{true} if and only if the formula holds by traversing a formula bottom-up and pattern matching on it.
+All the necessary functions, such as \texttt{andb}, \texttt{orb}, and \texttt{negb} are already implemented in \textsc{Coq}. 
+They even suffice to compute the result of an implication since $p \rightarrow q$ is known to be equivalent to $\neg p \lor q$.
+
+\subsection{Optimizer}
+
 \subsection{A Subsection Sample}
 Please note that the first paragraph of a section or subsection is
 not indented. The first paragraph that follows a table, figure,
