@@ -231,7 +231,7 @@ Proof.
 
 Fixpoint interp (v : valuation) (p : form) : bool :=
   match p with
-  | form_var x => v x
+  | form_id x => v x
   | <{ true }> => true
   | <{ false }> => false
   | <{ p /\ q }> => (* both need to hold *) (interp v p) && (interp v q)
@@ -259,7 +259,7 @@ Proof. reflexivity. Qed.
     not contain [true] or [false]. *)
 
 Inductive contains_no_atoms : form -> Prop :=
-  | cna_var : forall (x : id), 
+  | cna_id : forall (x : id), 
       contains_no_atoms <{ x }>
   | cna_cdi : forall (p q1 q2 : form), 
       p = <{ q1 /\ q2 }> \/ p = <{ q1 \/ q2 }> \/ p = <{ q1 -> q2 }> ->
@@ -324,6 +324,14 @@ Fixpoint optim (p : form) : form :=
     end
   | _ => p
   end.
+
+Example optim_example1 : 
+  optim <{ x /\ (~true /\ (z \/ true)) -> x /\ y /\ z }> = <{ true }>.
+Proof. reflexivity. Qed.
+
+Example optim_example2 :
+  optim <{ x /\ (y \/ (false -> z)) }> = <{ x }>.
+Proof. reflexivity. Qed.
 
 (* ================================================================= *)
 (** ** Correctness *)

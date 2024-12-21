@@ -34,21 +34,92 @@ Now that we can write a formula in \textsc{Coq}, we want to define its semantics
 
 To do so, we need to know which boolean values to replace all identifiers occurring in a formula with.
 Therefore, we define the type \texttt{valuation}. 
-A valuation is a function that, being passed an identifier, returns \texttt{true} or \texttt{false}, or, in other words, a valuation is a total map from identifiers to booleans. Our implementation is analogous to the total map defined by Pierce et al. in \cite{pierceSF}.
+A \emph{valuation} is a function that, being passed an identifier, returns \texttt{true} or \texttt{false}, or, in other words, a valuation is a total map from identifiers to booleans. 
+Our implementation is analogous to the total map defined by Pierce et al. in \cite{pierceSF}.
 % An empty valuation is a valuation that returns \texttt{false} for all arguments.
 
-Again, to simply writing and reading valuations, we introduce a \textsc{Notation} \texttt{x !-> b ;; v} to override a valuation \texttt{v} with a new value \texttt{b} for \texttt{x}. At first, we used just a single semicolon, but this causes conflicts with list notations. 
+Again, to simplify writing and reading valuations, we introduce a \texttt{Notation} \texttt{x !-> b ;; v} to override a valuation \texttt{v} with a new value \texttt{b} for \texttt{x}. 
+At first, we used just a single semicolon, but this caused conflicts with list notations. 
 
-We also specify some lemmas of \cite{pierceSF} for later reasonings. Their proofs rely on the functional extensionality axiom, stating that two functions are equal if and only if their applications to all their possible arguments are equal. It is known to be compatible with \textsc{Coq}'s logical core.
+We also specify some lemmas of \cite{pierceSF} for later reasonings. 
+Their proofs rely on the functional extensionality axiom, stating that two functions are equal if and only if their applications to all their possible arguments are equal. 
+It is known to be compatible with \textsc{Coq}'s logical core.
 
 \subsubsection{Interpreter.}
 
-The \texttt{valuation} type allows us to define a recursive interpreter function.
+The \texttt{valuation} type allows us to define a recursive interpretation function \texttt{interp}.
 Applied to a valuation and a formula, it returns \texttt{true} if and only if the formula holds by traversing a formula bottom-up and pattern matching on it.
 All the necessary functions, such as \texttt{andb}, \texttt{orb}, and \texttt{negb} are already implemented in \textsc{Coq}. 
 They even suffice to compute the result of an implication since $p \rightarrow q$ is known to be equivalent to $\neg p \lor q$.
 
 \subsection{Optimizer}
+
+Sometimes, a formula's interpretation can be derived or, at least, simplified on a purely syntactical level, leaving it in a form that is easier to read and reducing the computation effort needed by the interpretation function while preserving the semantics.
+In this part of the project, we therefore introduce an optimization function \texttt{optim}.
+
+\subsubsection{Minimality.}
+
+A key challenge was formally defining what a simplification is and what property the result of \texttt{optim} should have.
+
+A \emph{simplification} reduces the applications of the binary operators $\land$, $\lor$ and $\rightarrow$ to one of their two arguments or an \emph{atom}, i.e., the boolean values \texttt{true} and \texttt{false}. 
+Additionally, when applied to an atom, the unary operation $\neg$ can be simplified to an atom.
+
+The aim is to leave a formula $p$ in a form that cannot be simplified further on a syntactical level.
+We assume this to be the case in exactly two mutually exclusive situations:
+\begin{itemize}
+    \item $p$ is an atom, or
+    \item $p$ does not contain any atoms.
+\end{itemize}
+When one of the situations applies, we say $p$ is in \emph{minimal form}. Formalizing this definition in \textsc{Coq}, we require either a fixpoint returning \texttt{true} if and only if a formula does not contain atoms or an inductive proposition.
+While we initially opted for a fixpoint, proving the correctness of our optimizer later turned out easier with an inductive proposition. 
+A formula does not contain an atom if it is an identifier or if all its subformulas do not contain atoms.
+
+We settle on a set of laws that our optimizer uses and allow it to fulfill the above-mentioned correctness and minimality requirements:
+\begin{alignat}{4}
+    \texttt{true} \land p &\equiv p &p \land \texttt{true} &\equiv p &\texttt{false} \land p &\equiv \texttt{false}\hspace*{20pt}&p \land \texttt{false} &\equiv \texttt{false} \\
+    \texttt{true} \lor p &\equiv \texttt{true}\hspace*{20pt}&p \lor \texttt{true} &\equiv \texttt{true}\hspace*{20pt}&\texttt{false} \lor p &\equiv p &p \lor \texttt{false} &\equiv p \\
+    \texttt{true} \rightarrow p &\equiv p &p \rightarrow \texttt{true} &\equiv \texttt{true} &\texttt{false} \rightarrow p &\equiv \texttt{true} &p \rightarrow \texttt{false} &\equiv \neg p \\
+    &&\neg \texttt{true} &\equiv \texttt{false} &\neg \texttt{false} &\equiv \texttt{true}
+\end{alignat}
+
+\subsubsection{Implementation.}
+
+The actual implementation of the optimizer in \textsc{Coq} requires a bit of thought.
+Indeed, our first implementation attempt was a top-down traversal of the abstract syntax tree of the given formula and successive application of the listed simplifications.
+However, this misses some optimization potential as it may only become available after optimizing subformulas.
+To try and remedy this, we wrote a recursive function repeatedly applying \texttt{optim} on a formula until reaching a fixpoint.
+While a fixpoint is eventually reached in practice, \textsc{Coq} cannot know and rejects the function as new arguments to \texttt{optim} are not obviously smaller.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[scale=0.82,valign=t]{figures/optimizer1.pdf}
+    \includegraphics[scale=0.82,valign=t]{figures/optimizer2.pdf}
+    \includegraphics[scale=0.82,valign=t]{figures/optimizer3.pdf}
+    \includegraphics[scale=0.82,valign=t]{figures/optimizer4.pdf}
+    \caption{Successive syntactical optimization steps on $x \land (\texttt{false} \land (z \lor \texttt{true}))$.}
+    \label{fig:optimizer}
+\end{figure}
+
+Instead, our revised approach only traverses the passed formula once and hence only requires linear runtime.
+We achieve this by performing a post-order depth-first-search (DFS) on the abstract syntax tree of the passed formula.
+This way, optimizations of subformulas are directly taken into account.
+Even though sometimes it is sufficient to simplify only one or even no subformula, we always traverse the whole tree for easier proving of the required properties.
+Figure \ref{fig:optimizer} illustrates such a case, where for the formula $x \land (\texttt{false} \land (z \lor \texttt{true}))$, the subformula $z \lor \texttt{true}$ is simplified to \texttt{true} first, even though $\texttt{false} \land (z \lor \texttt{true})$ could directly be simplified to \texttt{false} from the get-go.
+Note, however, that the formula is translated to \texttt{false} without even running the interpreter just by its syntax.
+
+% note example some more optim potential not carried out
+
+\subsubsection{Properties.}
+
+\begin{theorem}
+    For all valuations $v$ and formulas $p$, $\texttt{interp}\,(v, p) = \texttt{interp}\,(v, \texttt{optim}\,(p))$, i.e., the optimizer is correct since it preserves the semantics of formulas.
+\end{theorem}
+
+\begin{theorem}
+    For all formulas, the result of the optimizer is minimal.
+\end{theorem}
+
+% topdown would ne reapplication until fixpoint reached, not sure to be terminating to coq
 
 \subsection{A Subsection Sample}
 Please note that the first paragraph of a section or subsection is
@@ -111,12 +182,3 @@ propositions, and corollaries are styled the same way.
 Proofs, examples, and remarks have the initial word in italics,
 while the following text appears in normal font.
 \end{proof}
-For citations of references, we prefer the use of square brackets
-and consecutive numbers. Citations using labels or the author/year
-convention are also acceptable. The following bibliography provides
-a sample reference list with entries for journal
-articles~\cite{ref_article1}, an LNCS chapter~\cite{ref_lncs1}, a
-book~\cite{ref_book1}, proceedings without editors~\cite{ref_proc1},
-and a homepage~\cite{ref_url1}. Multiple citations are grouped
-\cite{ref_article1,ref_lncs1,ref_book1},
-\cite{ref_article1,ref_book1,ref_proc1,ref_url1}.
