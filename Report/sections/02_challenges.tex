@@ -1,4 +1,4 @@
-\section{Implementation and Encountered Problems}
+\section{Implementation and Encountered Problems}\label{sec:impl}
 
 In this section, we present our implementation choices and compare them to discarded alternatives to justify them. 
 We also describe what difficulties we encountered during development and how we addressed them.
@@ -30,7 +30,7 @@ For example, $x \lor \neg y \land z \rightarrow \texttt{false}$ is interpreted a
 
 Now that we can write a formula in \textsc{Coq}, we want to define its semantics, i.e., if we interpret it as \texttt{true} or \texttt{false}.
 
-\subsubsection{Valuations.}
+\subsubsection{Valuations.} % TODO: clarify valuation notation
 
 To do so, we need to know which boolean values to replace all identifiers occurring in a formula with.
 Therefore, we define the type \texttt{valuation}. 
@@ -40,6 +40,7 @@ Our implementation is analogous to the total map defined by Pierce et al. in \ci
 
 Again, to simplify writing and reading valuations, we introduce a \texttt{Notation} \texttt{x !-> b ;; v} to override a valuation \texttt{v} with a new value \texttt{b} for \texttt{x}. 
 At first, we used just a single semicolon, but this caused conflicts with list notations. 
+Additionally, we define an empty valuation to map all identifiers to \texttt{false}.
 
 We also specify some lemmas of \cite{pierceSF} for later reasonings. 
 Their proofs rely on the functional extensionality axiom, stating that two functions are equal if and only if their applications to all their possible arguments are equal. 
@@ -54,7 +55,7 @@ They even suffice to compute the result of an implication since $p \rightarrow q
 
 \subsection{Optimizer}
 
-Sometimes, a formula's interpretation can be derived or, at least, simplified on a purely syntactical level, leaving it in a form that is easier to read and reducing the computation effort needed by the interpretation function while preserving the semantics.
+Sometimes, a formula's interpretation can be derived or, at least, simplified on a purely syntactical level, leaving it in a form that is easier to read and reason upon and marginally reducing the computation effort needed by the interpretation function while preserving the semantics.
 In this part of the project, we therefore introduce an optimization function \texttt{optim}.
 
 \subsubsection{Minimality.}
@@ -81,6 +82,10 @@ We settle on a set of laws that our optimizer uses and allow it to fulfill the a
     \texttt{true} \rightarrow p &\equiv p &p \rightarrow \texttt{true} &\equiv \texttt{true} &\texttt{false} \rightarrow p &\equiv \texttt{true} &p \rightarrow \texttt{false} &\equiv \neg p \\
     &&\neg \texttt{true} &\equiv \texttt{false} &\neg \texttt{false} &\equiv \texttt{true}
 \end{alignat}
+
+Note that we leave out some further simplification potential. 
+For improved provability, we only concentrate on laws involving at least one atom.
+One could also go beyond and, e.g., add laws such as $p \land \neg p \equiv \texttt{false}$ for an arbitrary formula $p$ to this set.
 
 \subsubsection{Implementation.}
 
@@ -138,8 +143,65 @@ Nevertheless, we factor out the recurrent patterns of deconstructing and rewriti
 
 \subsection{Solver}
 
-% difficulty: even though cases pretty similar, always slight changes, need to consider existential closely
-% don't know why unshelving needed, where shelved originally
+In this final section, we can finally deal with our SAT solver.
+Our idea is to collect representatives for all classes of valuations that are susceptible of satisfying a given formula and test them on the formula until one positive interpretation is found or no valuation matches.
+Indeed, only identifiers that are in a formula influence its interpretation, and we can safely map all identifiers not contained in a formula to \texttt{false} in our collected valuations:
+\begin{lemma}
+    For any formula, two otherwise identical valuations differing in the value of an identifier that is not contained in the formula lead to an identical interpretation.
+\end{lemma}
+
+Initially, we wanted to write a function that directly collects all relevant valuations for a given formula.
+While this is possible, it would have inevitably collected duplicate valuations as comparing valuations is not computable, as valuations are, in turn, functions themselves.
+Duplicate valuations can, however, lead to a significantly increased runtime of our solver in some cases.
+For instance, consider the unsatisfiable formula $x \land \neg x$.
+The initial function would collect \texttt{[$x$ !-> true ; $x$ !-> true ; empty\_valuation]}.
+We would then check the valuation \texttt{$x$ !-> true} twice, even though it does not satisfy the formula.
+Generalized to examples with many duplicate identifiers in respective subformulas, this does not scale.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[scale=0.9]{figures/solver.pdf}
+    \caption{Exemplary solving process for $(((x \rightarrow \neg y) \lor (x \land \neg x)) \land (y \land z)) \land \texttt{true}$.}
+    \label{fig:solver}
+\end{figure}
+
+Instead, we decide to implement our solver with three individual functions.
+We name them explicitly rather than defining them as anonymous fixpoints and can hence show some detached properties in \textsc{Coq}.
+Throughout this section, we will use the formula $(((x \rightarrow \neg y) \lor (x \land \neg x)) \land (y \land z)) \land \texttt{true}$ as running example to illustrate the solving steps as depicted in figure \ref{fig:solver}.
+
+\subsubsection{Extracting Identifiers.}
+
+To tackle the above-mentioned problem, we provide a dedicated recursive function \texttt{collect\_ids} that collects all identifiers of a formula without duplicates.
+
+\begin{figure}[t]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,label=lst:ids_union,caption=Custom duplicate free list merging function.]
+Fixpoint ids_union (l1 l2 : list id) :=
+  match l1 with
+  | [] => l2
+  | x::xs => if existsb (eqb_id x) l2 then ids_union xs l2 else ids_union xs (x :: l2)
+  end.
+\end{lstlisting}
+\end{figure}
+
+We wanted the result of the function to be a finite set but did not find a standard library implementation that fully corresponded to our expectations.
+Thus, we first decided to return a list and take care ourselves to not include any duplicates.
+The abandoned implementation of a function merging the lists of collect identifiers of two subformulas without duplicates can be found in listing \ref{lst:ids_union}.
+We formally proved that elements included in either \texttt{l1} or \texttt{l2} are all kept in the result, that any element of the result is originally contained in \texttt{l1} or \texttt{l2}, and that if \texttt{NoDup l1} and \texttt{NoDup l2}, then \texttt{NoDup (ids\_union l1 l2)} holds.
+
+After some deeper search through the standard library, we, in the end, opted for the finite set implementation provided in \texttt{Coq.Lists.ListSet}\footnote{\url{https://coq.inria.fr/doc/v8.9/stdlib/Coq.Lists.ListSet.html}}.
+Even though it does not hide many implementation details, it comes with some predefined set manipulation operations and some lemmas about its properties, which would not have justified a similar custom re-implementation.
+To confirm it matches our expectations, we show that \texttt{set\_add} behaves as the identity function if we try adding an identifier $x$ to a set that already contains it and that it behaves as an append of the one-element list \texttt{[$x$]} to the end of the set, which in fact is just a list, else.
+
+The most relevant property of \texttt{collect\_ids} is however the following:
+\begin{lemma}
+    An identifier is contained in a formula $p$ if and only if it is contained in \texttt{collect\_ids\;$p$}.
+\end{lemma}
+
+\subsubsection{Collecting Valuations.}
+
+\subsection{Miscellaneous}
+
+Difficulty with Import/Export
 
 \subsection{A Subsection Sample}
 Please note that the first paragraph of a section or subsection is

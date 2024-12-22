@@ -33,10 +33,16 @@
 
 \usepackage[export]{adjustbox}
 \usepackage{amsmath}
+\usepackage{xcolor}
+
+\usepackage{listings}
+\usepackage{lstcoq}
 
 \bibliography{bibliography}
 
 \begin{document}
+\renewcommand{\lstlistingname}{List.}
+\renewcommand{\thelstlisting}{\arabic{lstlisting}}
 %
 \title{Formal Software Verification Project Report\newline{}SAT Solver}
 %

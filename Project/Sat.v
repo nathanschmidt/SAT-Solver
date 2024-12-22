@@ -503,7 +503,7 @@ Example satisfiable_example2 : satisfiable <{ ~y -> (x \/ y) }>.
 Proof. exists (y !-> true). reflexivity. Qed.
 
 (* ================================================================= *)
-(** ** Identifier Extraction *)
+(** ** Extracting Identifiers *)
 
 (** We will construct the solver in incremental steps. First, we define a
     function that, given a formula, collects all contained identifiers. *)
@@ -540,7 +540,7 @@ Proof.
 
 Fixpoint collect_ids (p : form) : set id :=
   match p with
-  | form_var x => id_set_add x (empty_set id)
+  | form_id x => id_set_add x (empty_set id)
   | <{ p /\ q }> | <{ p \/ q }> | <{ p -> q }> => 
     id_set_union (collect_ids p) (collect_ids q)
   | <{ ~p }> => collect_ids p
@@ -554,12 +554,38 @@ Fixpoint collect_ids (p : form) : set id :=
 
 Fixpoint id_in_form (x : id) (p : form) : bool :=
   match p with
-  | form_var y => eqb_id x y
+  | form_id y => eqb_id x y
   | <{ q1 /\ q2 }> | <{ q1 \/ q2 }> | <{ q1 -> q2 }> => 
     id_in_form x q1 || id_in_form x q2
   | <{ ~q }> => id_in_form x q
   | _ => false
   end.
+
+Ltac destruct_apply :=
+  repeat match goal with
+  | [ H1 : ?P, H2 : ?P -> ?Q |- _ ] => apply H2 in H1; try exact H1;
+    unfold id_set_union;
+    try (eapply set_union_intro1 in H1; exact H1);
+    (eapply set_union_intro2 in H1; exact H1)
+  | [ H : ?H1 || ?H2 = true |- _ ] => rewrite orb_true_iff in H; destruct H
+  end.
+
+Lemma id_in_form_iff_in_collect_ids : forall (x : id) (p : form),
+  id_in_form x p = true <-> set_In x (collect_ids p).
+Proof.
+  intros x p. split; intros H;
+  induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
+                  q IHq];
+  simpl in *;
+  try (rewrite eqb_id_eq in H; left; symmetry; exact H);
+  try discriminate H;
+  try destruct_apply;
+  try (apply set_union_elim in H; destruct H as [H | H]);
+  try (apply IHq1 in H; rewrite H; reflexivity);
+  try (apply IHq2 in H; rewrite H; rewrite orb_true_r; reflexivity);
+  try (destruct H as [H | H]; try (rewrite eqb_id_eq; symmetry; exact H));
+  inversion H.
+  Qed.
 
 Lemma id_in_form_iff_in_collect_ids : forall (x : id) (p : form),
   id_in_form x p = true <-> set_In x (collect_ids p).
@@ -612,6 +638,38 @@ Proof.
     + apply IHq1 in H. rewrite H. reflexivity.
     + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
   - apply IHq in H. exact H.
+  Qed.
+
+(** That is relevant as only identifiers in the formula influence its
+    satisfiability. *)
+
+Lemma id_not_in_form_no_influence : forall (x : id) (v : valuation) (p : form),
+  id_in_form x p = false -> 
+  interp (x !-> true ;; v) p = interp (x !-> false ;; v) p.
+Proof.
+  intros x v p H.
+  induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
+                  q IHq].
+  - (* y *) destruct (id_eq_dec x y).
+    + subst. simpl in  H. rewrite eqb_id_refl in H.
+      discriminate H.
+    + simpl. rewrite override_neq; try rewrite override_neq;
+      try reflexivity; assumption.
+  - (* bool *) reflexivity.
+  - (* q1 /\ q2 *) simpl in *. 
+    rewrite orb_false_iff in H. destruct H as [H1 H2].
+    apply IHq1 in H1. apply IHq2 in H2.
+    rewrite H1, H2. reflexivity.
+  - (* q1 \/ q2 *) simpl in *. 
+    rewrite orb_false_iff in H. destruct H as [H1 H2].
+    apply IHq1 in H1. apply IHq2 in H2.
+    rewrite H1, H2. reflexivity.
+  - (* q1 -> q2 *) simpl in *. 
+    rewrite orb_false_iff in H. destruct H as [H1 H2].
+    apply IHq1 in H1. apply IHq2 in H2.
+    rewrite H1, H2. reflexivity.
+  - (* ~q *) simpl in *. apply IHq in H.
+    rewrite H. reflexivity.
   Qed.
 
 (* ================================================================= *)
@@ -749,6 +807,9 @@ Definition solver (p : form) : bool :=
   | Some _ => true
   | None => false
   end.
+
+Example test: check_vals <{ (((x -> ~y) \/ (x /\ ~x)) /\ (y /\ z)) /\ true }> (collect_vals (collect_ids (optim <{ (((x -> ~y) \/ (x /\ ~x)) /\ (y /\ z)) /\ true }>))) = Some empty_valuation.
+Proof. simpl.
 
 Example solver_pos_example1 : solver <{ (x \/ ~y) /\ (~x \/ y) }> = true.
 Proof. reflexivity. Qed.
