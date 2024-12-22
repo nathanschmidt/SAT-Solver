@@ -107,19 +107,39 @@ Even though sometimes it is sufficient to simplify only one or even no subformul
 Figure \ref{fig:optimizer} illustrates such a case, where for the formula $x \land (\texttt{false} \land (z \lor \texttt{true}))$, the subformula $z \lor \texttt{true}$ is simplified to \texttt{true} first, even though $\texttt{false} \land (z \lor \texttt{true})$ could directly be simplified to \texttt{false} from the get-go.
 Note, however, that the formula is translated to \texttt{false} without even running the interpreter just by its syntax.
 
-% note example some more optim potential not carried out
-
 \subsubsection{Properties.}
 
+To close off this section, we must formally verify that our optimizer truly meets its requirements.
+First and foremost, the following theorem holds:
 \begin{theorem}
-    For all valuations $v$ and formulas $p$, $\texttt{interp}\,(v, p) = \texttt{interp}\,(v, \texttt{optim}\,(p))$, i.e., the optimizer is correct since it preserves the semantics of formulas.
+    For all valuations $v$ and formulas $p$, $\texttt{interp}\;v\;p = \texttt{interp}\;v\;(\texttt{optim}\;p)$, i.e., the optimizer is correct since it preserves the semantics of formulas.
 \end{theorem}
+\begin{proof}
+    We proceed by induction on the structure of $p$. 
+    The non-trivial cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$ and $p = q_1 \rightarrow q_2$ are all shown by case distinction on $\texttt{optim}\;q_1$ and $\texttt{optim}\;q_2$ and application of the induction hypotheses claiming the optimizer is correct for $q_1$ and $q_2$.
+    $p = \neg q$ follows the same pattern for a single subformula $q$. \qed
+\end{proof}
+The main challenges for formally proving this theorem in \textsc{Coq} do not lie in the reasoning but rather in removing redundancies.
+Consequently, as for many other proofs of the project, we decided to first write a mostly manually written version before looking out for automation potential.
+In a final step, we filtered out common patterns through custom tactics through the \texttt{Ltac} language. 
 
+We also prove this second theorem to show our optimizer is actually exhaustive:
 \begin{theorem}
-    For all formulas, the result of the optimizer is minimal.
+    For all formulas $p$, the result of the optimizer $\texttt{optim}\;p$ is in minimal form.
 \end{theorem}
+\begin{proof}
+    We proceed by induction on the structure of $p$.
+    For the cases $p = q_1 \land q_2$, $p = q_2 \lor q_2$, $p = q_1 \rightarrow q_2$ and $p = \neg q$, we perform case distinctions on the induction hypotheses (minimality of the subformulas), as well as the results of the optimizer applied to them.
+    If necessary, we invert the induction hypotheses involving the deconstructed optimizer results.
+    Then, it follows directly from the hypotheses set that $p$ either does not contain atoms or, on the contrary, is an atom. \qed
+\end{proof}
+For this \textsc{Coq} proof, many cases are very similar, but, e.g., differ in the actual atom $p$ is equal to, reducing the potential for automation, as one must carefully introduce a fitting witness for the left branch of minimality, i.e., \texttt{exists b, p = form\_bool b}.
+Nevertheless, we factor out the recurrent patterns of deconstructing and rewriting with the induction hypotheses and destructing $\texttt{optim}\;q$ for a subformula $q$ and then inverting one of the induction hypotheses. In some rare cases, some forms are shelved in the process, requiring the use of \texttt{Unshelve}, which we were unaware of beforehand.
 
-% topdown would ne reapplication until fixpoint reached, not sure to be terminating to coq
+\subsection{Solver}
+
+% difficulty: even though cases pretty similar, always slight changes, need to consider existential closely
+% don't know why unshelving needed, where shelved originally
 
 \subsection{A Subsection Sample}
 Please note that the first paragraph of a section or subsection is
