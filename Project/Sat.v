@@ -394,39 +394,45 @@ Proof.
 (** Now, we show that we actually gain something by using the optimizer, 
     meaning it indeed transforms any formula to its minimal form. *)
 
+Ltac destruct_or :=
+  repeat match goal with
+  | [ H : _ \/ _ |- _ ] => destruct H as [H | H]
+  | [ H : exists _, _ |- _ ] => destruct H
+  | [ H : _ = _ |- _ ] => rewrite H
+  end.
+
+Ltac destruct_invert q IH H := 
+  destruct q;
+  try (inversion IH; destruct H as [H | [H | H]]; inversion H);
+  try (right; constructor; try rewrite <- H; assumption);
+  try (right; try rewrite <- H; assumption).
+
 Theorem optim_minimizes : forall (p : form),
   minimal_form (optim p).
 Proof.
   induction p as [x | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
                   q IHq];
-  unfold minimal_form; simpl.
+  unfold minimal_form in *; simpl.
   - (* x *) right. constructor.
   - (* bool *) left. exists b. reflexivity.
-  - (* q1 /\ q2 *) destruct IHq1 as [IHq1 | IHq1]; 
-    destruct IHq2 as [IHq2 | IHq2].
+  - (* q1 /\ q2 *) destruct_or.
     + (* q1, q2 bool *) left. 
-      destruct IHq1 as [b1 IHq1]. destruct IHq2 as [b2 IHq2].
-      rewrite IHq1. rewrite IHq2.
-      destruct b1.
-      * exists b2. reflexivity.
-      * destruct b2; exists false; reflexivity.
-    + (* q1 bool, q2 no atoms *) destruct IHq1 as [b1 IHq1]. rewrite IHq1.
-      destruct b1.
-      * (* b1 = true *) right. assumption.
-      * (* b1 = false *) left. exists false. 
-        destruct (optim q2); try destruct b; constructor.
-    + (* q1 no atoms, q2 bool *) destruct IHq2 as [b2 IHq2]. rewrite IHq2.
-      destruct b2.
+      destruct x1.
+      * exists x0. reflexivity.
+      * destruct x0; exists false; reflexivity.
+    + (* q1 no atoms, q2 bool *) destruct x0.
       * (* b2 = true *) right; destruct (optim q1);
         (* optim q1 not bool *) try assumption.
         (* optim q1 bool *) inversion IHq1. 
-        destruct H as [H | [H | H]]; inversion H.
+        destruct H0 as [H0 | [H0 | H0]]; inversion H0.
       * (* b2 = false *) left. exists false.
         destruct (optim q1); try destruct b; constructor.
+    + (* q1 bool, q2 no atoms *) destruct x0.
+      * (* b1 = true *) right. assumption.
+      * (* b1 = false *) left. exists false. 
+        destruct (optim q2); try destruct b; constructor.
     + (* q1, q2 no atoms *) destruct (optim q1);
-      (* optim q1 not bool *) try (right; destruct (optim q2);
-      (* optim q2 bool *) try (inversion IHq2; destruct H as [H | [H | H]]; 
-      inversion H);
+      (* optim q1 not bool *) try (right; destruct_invert (optim q2) IHq2 H;
       (* else *) econstructor; 
       try (left; reflexivity);
       try rewrite <- H; assumption).
@@ -434,74 +440,47 @@ Proof.
       -- (* b = true *) right. assumption.
       -- (* b = false *) left. exists false. 
          destruct (optim q2); try destruct b; reflexivity.
-  - (* q1 \/ q2 *) destruct IHq1 as [IHq1 | IHq1]; 
-    destruct IHq2 as [IHq2 | IHq2].
-    + (* q1, q2 bool *) left. 
-      destruct IHq1 as [b1 IHq1]. destruct IHq2 as [b2 IHq2].
-      rewrite IHq1. rewrite IHq2.
-      destruct b1.
+  - (* q1 \/ q2 *) destruct_or.
+    + (* q1, q2 bool *) left. destruct x1.
       * exists true. reflexivity.
-      * destruct b2; [exists true | exists false]; reflexivity.
-    + (* q1 bool, q2 no atoms *) destruct IHq1 as [b1 IHq1]. rewrite IHq1.
-      destruct b1.
-      * (* b1 = true *) left. exists true. reflexivity.
-      * (* b1 = false *) destruct (optim q2);
-        (* optim q2 bool *) try (inversion IHq2; destruct H as [H | [H | H]]; 
-        inversion H);
-        (* else *) right; try rewrite <- H; assumption.
-    + (* q1 no atoms, q2 bool *) destruct IHq2 as [b2 IHq2]. rewrite IHq2.
-      destruct b2.
+      * destruct x0; [exists true | exists false]; reflexivity.
+    + (* q1 no atoms, q2 bool *) destruct x0.
       * (* b2 = true *) left. destruct (optim q1); exists true;
         try destruct b; reflexivity.
-      * (* b2 = false *)  destruct (optim q1); 
-        (* optim q1 bool *) try (inversion IHq1; destruct H as [H | [H | H]]; 
-        inversion H);
-        (* else *) right; try rewrite <- H; assumption.
-    + (* q1, q2 no atoms *) destruct (optim q1);
-      destruct (optim q2);
-      try (inversion IHq1; destruct H as [H | [H | H]]; inversion H);
-      try (inversion IHq2; destruct H as [H | [H | H]]; inversion H);
+      * (* b2 = false *) destruct_invert (optim q1) IHq1 H0.
+    + (* q1 bool, q2 no atoms *) destruct x0.
+      * (* b1 = true *) left. exists true. reflexivity.
+      * (* b1 = false *) destruct_invert (optim q2) IHq2 H0.
+    + (* q1, q2 no atoms *) destruct_invert (optim q1) IHq1 H;
+      destruct_invert (optim q2) IHq2 H;
       right; econstructor; try (right; left; reflexivity);
       try rewrite <- H; try assumption;
       inversion IHq2; destruct H3 as [H3 | [H3 | H3]]; inversion H3. 
       Unshelve. auto. auto. auto. auto. auto. auto.
-  - (* q1 -> q2 *) destruct IHq1 as [IHq1 | IHq1]; 
-    destruct IHq2 as [IHq2 | IHq2].
-    + (* q1, q2 bool *) left. 
-      destruct IHq1 as [b1 IHq1]. destruct IHq2 as [b2 IHq2].
-      rewrite IHq1. rewrite IHq2.
-      destruct b1.
-      * exists b2. reflexivity.
-      * destruct b2; exists true; reflexivity.
-    + (* q1 bool, q2 no atoms *) destruct IHq1 as [b1 IHq1]. rewrite IHq1.
-      destruct b1.
-      * (* b1 = true *) right. assumption.
-      * (* b1 = false *) destruct (optim q2);
-        (* optim q2 bool *) try (inversion IHq2; destruct H as [H | [H | H]]; 
-        inversion H);
-        (* else *) left; exists true; reflexivity.
-    + (* q1 no atoms, q2 bool *) destruct IHq2 as [b2 IHq2]. rewrite IHq2.
-      destruct b2.
+  - (* q1 -> q2 *) destruct_or.
+    + (* q1, q2 bool *) left. destruct x1.
+      * exists x0. reflexivity.
+      * destruct x0; exists true; reflexivity.
+    + (* q1 no atoms, q2 bool *) destruct x0.
       * (* b2 = true *) left. destruct (optim q1); exists true;
         try destruct b; reflexivity.
-      * (* b2 = false *)  destruct (optim q1);
-        (* optim q1 bool *) try (inversion IHq1; destruct H as [H | [H | H]]; 
-        inversion H);
-        (* else *) right; constructor; try rewrite <- H; assumption.
-    + (* q1, q2 no atoms *) destruct (optim q1);
-      (* optim q1 bool *) try (inversion IHq1; destruct H as [H | [H | H]];
-      inversion H);
-      (* else *) destruct (optim q2);
+      * (* b2 = false *) destruct_invert (optim q1) IHq1 H.
+        left. destruct b; [exists false | exists true]; reflexivity.
+    + (* q1 bool, q2 no atoms *) destruct x0.
+      * (* b1 = true *) right. assumption.
+      * (* b1 = false *) destruct_invert (optim q2) IHq2 H;
+        left; exists true; try destruct b; reflexivity.
+    + (* q1, q2 no atoms *) destruct_invert (optim q1) IHq1 H;
+      destruct (optim q2);
       (* optim q2 bool *) try (inversion IHq2; 
       try destruct H as [H | [ H | H]]; try destruct H3 as [H3 | [H3 | H3]];
       try inversion H; try inversion H3);
       (* else *) right; econstructor; try (right; right; reflexivity);
       try rewrite <- H; try rewrite <- H3; subst; assumption.
-  - (* ~q *) destruct IHq as [IHq | IHq]; destruct (optim q);
-    try (destruct IHq as [b IHq]); try inversion IHq;
-    (* optim q not bool *) try (right; constructor; assumption);
-    try destruct b; left; try (exists true; reflexivity);
-    exists false; reflexivity.
+  - (* ~q *) destruct_or.
+    + (* optim q bool *) left. destruct x0; 
+      [exists false | exists true]; reflexivity.
+    + (* optim q not bool *) destruct_invert (optim q) IHq H.
   Qed.
 
 (* ################################################################# *)
