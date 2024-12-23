@@ -505,8 +505,9 @@ Proof. exists (y !-> true). reflexivity. Qed.
 (* ================================================================= *)
 (** ** Extracting Identifiers *)
 
-(** We will construct the solver in incremental steps. First, we define a
-    function that, given a formula, collects all contained identifiers. *)
+(** We will construct the solver in incremental steps. Let us introduce the
+    notion of finit sets of identifiers using the [ListSet] standard library
+    implementation. *)
 
 Definition empty_id_set := empty_set id.
 Definition id_set_add := set_add id_eq_dec.
@@ -538,6 +539,9 @@ Proof.
       reflexivity.
   Qed.
 
+(** We can now define a function that, given a formula, collects all contained
+    identifiers.  *)
+
 Fixpoint collect_ids (p : form) : set id :=
   match p with
   | form_id x => id_set_add x (empty_set id)
@@ -550,7 +554,7 @@ Fixpoint collect_ids (p : form) : set id :=
 (** Of course, it is important to show this function leaves out no identifiers.
     Therefore, let us define when an identifier is contained in a formula [p] 
     and then prove that this is exactly the case when it is in 
-    [collect_ids p].*)
+    [collect_ids p]. *)
 
 Fixpoint id_in_form (x : id) (p : form) : bool :=
   match p with
@@ -587,59 +591,6 @@ Proof.
   inversion H.
   Qed.
 
-Lemma id_in_form_iff_in_collect_ids : forall (x : id) (p : form),
-  id_in_form x p = true <-> set_In x (collect_ids p).
-Proof.
-  intros x p. split; intros H;
-  induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
-                  q IHq];
-  simpl in *.
-  - rewrite eqb_id_eq in H. left. symmetry. exact H.
-  - discriminate H.
-  - destruct (id_in_form x q1).
-    + simpl in *. apply IHq1 in H.
-      unfold id_set_union. eapply set_union_intro1 in H.
-      exact H.
-    + destruct (id_in_form x q2).
-      * simpl in H. apply IHq2 in H.
-        unfold id_set_union. eapply set_union_intro2 in H.
-        exact H.
-      * discriminate H.
-  - destruct (id_in_form x q1).
-    + simpl in *. apply IHq1 in H.
-      unfold id_set_union. eapply set_union_intro1 in H.
-      exact H. 
-    + destruct (id_in_form x q2).
-      * simpl in H. apply IHq2 in H.
-        unfold id_set_union. eapply set_union_intro2 in H.
-        exact H.
-      * discriminate H.
-  - destruct (id_in_form x q1).
-    + simpl in *. apply IHq1 in H.
-      unfold id_set_union. eapply set_union_intro1 in H.
-      exact H. 
-    + destruct (id_in_form x q2).
-      * simpl in H. apply IHq2 in H.
-        unfold id_set_union. eapply set_union_intro2 in H.
-        exact H.
-      * discriminate H.
-  - apply IHq in H. exact H.
-  - destruct H as [H | H].
-    + rewrite eqb_id_eq. symmetry. exact H.
-    + inversion H.
-  - inversion H.
-  - apply set_union_elim in H. destruct H as [H | H].
-    + apply IHq1 in H. rewrite H. reflexivity.
-    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
-  - apply set_union_elim in H. destruct H as [H | H].
-    + apply IHq1 in H. rewrite H. reflexivity.
-    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
-  - apply set_union_elim in H. destruct H as [H | H].
-    + apply IHq1 in H. rewrite H. reflexivity.
-    + apply IHq2 in H. rewrite H. rewrite orb_true_r. reflexivity.
-  - apply IHq in H. exact H.
-  Qed.
-
 (** That is relevant as only identifiers in the formula influence its
     satisfiability. *)
 
@@ -649,27 +600,16 @@ Lemma id_not_in_form_no_influence : forall (x : id) (v : valuation) (p : form),
 Proof.
   intros x v p H.
   induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 |
-                  q IHq].
+                  q IHq];
+  simpl in *;
+  (* q1 op q2 *) try (rewrite orb_false_iff in H; destruct H as [H1 H2];
+    apply IHq1 in H1; apply IHq2 in H2; rewrite H1, H2; reflexivity).
   - (* y *) destruct (id_eq_dec x y).
-    + subst. simpl in  H. rewrite eqb_id_refl in H.
-      discriminate H.
+    + subst. simpl in  H. rewrite eqb_id_refl in H. discriminate H.
     + simpl. rewrite override_neq; try rewrite override_neq;
       try reflexivity; assumption.
   - (* bool *) reflexivity.
-  - (* q1 /\ q2 *) simpl in *. 
-    rewrite orb_false_iff in H. destruct H as [H1 H2].
-    apply IHq1 in H1. apply IHq2 in H2.
-    rewrite H1, H2. reflexivity.
-  - (* q1 \/ q2 *) simpl in *. 
-    rewrite orb_false_iff in H. destruct H as [H1 H2].
-    apply IHq1 in H1. apply IHq2 in H2.
-    rewrite H1, H2. reflexivity.
-  - (* q1 -> q2 *) simpl in *. 
-    rewrite orb_false_iff in H. destruct H as [H1 H2].
-    apply IHq1 in H1. apply IHq2 in H2.
-    rewrite H1, H2. reflexivity.
-  - (* ~q *) simpl in *. apply IHq in H.
-    rewrite H. reflexivity.
+  - (* ~q *) apply IHq in H. rewrite H. reflexivity.
   Qed.
 
 (* ================================================================= *)
@@ -692,36 +632,40 @@ Example collect_vals_example : collect_vals [x; y] =
    (y !-> true) ; empty_valuation].
 Proof. reflexivity. Qed.
 
-(** With the use of one helper lemma, we show that for all identifiers, we
+(** With the use of two helper lemmas, we show that for all identifiers, we
     always generate valuations where they are both mapped to [true] and 
     [false]. *)
-
-Lemma collect_vals_not_empty : forall (ids : set id),
-  collect_vals ids <> [].
-Proof.
-  intros ids. induction ids as [| x xs]; 
-  intros contra; simpl in contra.
-  - discriminate contra.
-  - apply app_eq_nil in contra. destruct contra as [contra1 contra2].
-    assert (Hlen : length (collect_vals xs) >= 1).
-    { destruct (collect_vals xs) as [| v vs].
-      - contradiction.
-      - simpl. apply le_n_S. apply le_0_n. }
-    assert (Hlen_map : length (
-            map (fun y : valuation => x !-> true;; y) (collect_vals xs))
-            = 0).
-    { rewrite contra1. reflexivity. }
-    erewrite <- map_length in Hlen. rewrite Hlen_map in Hlen.
-    inversion Hlen.
-  Qed.
 
 Lemma empty_valuation_in_collect_vals : forall (ids : set id),
   In empty_valuation (collect_vals ids).
 Proof.
-  intros ids. induction ids as [| x xs IHxs].
-  - simpl. left. reflexivity.
-  - simpl. rewrite in_app_iff. right. exact IHxs.
+  intros ids. induction ids as [| x xs IHxs]; simpl.
+  - left. reflexivity.
+  - rewrite in_app_iff. right. exact IHxs.
   Qed.
+
+Lemma collect_vals_not_empty : forall (ids : set id),
+  collect_vals ids <> [].
+Proof.
+  intros ids contra1.
+  assert (contra2 : ~ In empty_valuation (collect_vals ids)).
+  { intros contra2. rewrite contra1 in contra2. 
+    simpl in contra2. exact contra2. }
+  apply contra2. apply empty_valuation_in_collect_vals.
+  Qed.
+
+Ltac backwards_not_eq :=
+  repeat match goal with
+  | [ H : ?P /\ ?Q |- _ ] => destruct H
+  | [ H : In _ (_ ++ _) |- _ ] => rewrite in_app_iff in H
+  | [ H : ?P -> ?Q |- ?Q ] => apply H
+  | [ |- ?P /\ ?Q ] => split
+  | [ H : ?P \/ ?Q |- _ ] => destruct H
+  | [ H : In _ (map _ _) |- _ ] => rewrite in_map_iff in H; destruct H; subst
+  | [ H1 : (?y !-> _ ;; _) ?x = _, H2 : ?y <> ?x |- _ ] => 
+    rewrite override_neq in H1; try assumption
+  | [ H : _ = _ |- _ ] => subst
+  end.
 
 Lemma collect_vals_all_ids : forall (x : id) (ids : set id),
   set_In x ids <->
@@ -736,19 +680,17 @@ Proof.
       * (* ids = y :: ys *) simpl in H. destruct H as [H | H].
         -- (* y = x *) subst. simpl.
            destruct (collect_vals ys) as [| v vs] eqn:Evals.
-          ++ (* vals = [] *) apply collect_vals_not_empty in Evals.
+           ++ (* vals = [] *) apply collect_vals_not_empty in Evals.
            inversion Evals.
-          ++ (* vals = v :: vs *) exists (x !-> true ;; v). simpl. split.
-             ** left. reflexivity.
-             ** rewrite override_eq. reflexivity.
+           ++ (* vals = v :: vs *) exists (x !-> true ;; v). simpl. split.
+              ** left. reflexivity.
+              ** rewrite override_eq. reflexivity.
         -- (* x in ys *) apply IHys in H. destruct H as [v [H1 H2]].
            simpl. exists (y !-> true ;; v). split.
-           ++ apply in_or_app. left. 
-              eapply in_map in H1. exact H1.
-           ++ destruct (eqb_id y x) eqn:Eyx.
-              ** rewrite eqb_id_eq in Eyx. subst.
-                 rewrite override_eq. reflexivity.
-              ** rewrite eqb_id_neq in Eyx. rewrite override_neq; assumption.
+           ++ rewrite in_app_iff. left. eapply in_map in H1. exact H1.
+           ++ destruct (id_eq_dec y x).
+              ** subst. rewrite override_eq. reflexivity.
+              ** rewrite override_neq; assumption.
     + exists empty_valuation. split.
       * apply empty_valuation_in_collect_vals.
       * reflexivity.
@@ -756,25 +698,13 @@ Proof.
     + (* ids = [] *) simpl in H1. destruct H1 as [[H11 | H11] H12].
       * subst. discriminate H12.
       * inversion H11.
-    + (* ids = y :: ys *) simpl in *.
-      destruct (eqb_id y x) eqn:Eyx.
-      * (* y = x *) rewrite eqb_id_eq in Eyx. left. exact Eyx.
-      * (* y <> x *) rewrite eqb_id_neq in Eyx. right.
-        destruct H1 as [H11 H12]. destruct H2 as [H21 H22].
-        apply in_app_or in H11. apply in_app_or in H21.
-        apply IHys. split.
-        -- destruct H11 as [H11 | H11].
-           ++ rewrite in_map_iff in H11. destruct H11 as [v [H111 H112]].
-              subst. exists v. split.
-              ** assumption.
-              ** rewrite override_neq in H12; assumption.
-           ++ exists v1. split; assumption.
-        -- destruct H21 as [H21 | H21].
-           ++ rewrite in_map_iff in H21. destruct H21 as [v [H211 H212]].
-              subst. exists v. split.
-              ** assumption.
-              ** rewrite override_neq in H22; assumption.
-           ++ exists v2. split; assumption.
+    + (* ids = y :: ys *) simpl in *. destruct (id_eq_dec y x).
+      * (* y = x *) left. exact e.
+      * (* y <> x *) right. backwards_not_eq;
+        try (exists x1; split; assumption);
+        try (exists v1; split; assumption);
+        try (exists x0; split; assumption);
+        exists v2; split; assumption.
   Qed.
 
 (* ================================================================= *)
