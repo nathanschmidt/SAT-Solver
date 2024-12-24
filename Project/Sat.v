@@ -738,8 +738,10 @@ Definition solver (p : form) : bool :=
   | None => false
   end.
 
-Example test: check_vals <{ (((x -> ~y) \/ (x /\ ~x)) /\ (y /\ z)) /\ true }> (collect_vals (collect_ids (optim <{ (((x -> ~y) \/ (x /\ ~x)) /\ (y /\ z)) /\ true }>))) = Some empty_valuation.
-Proof. simpl.
+(** [solver] is a decision procedure for [satisfiable]. That is, [satisfiable]
+    is the concrete problem _P_ on formulas _p_ we are considering and [solver] 
+    an algorithm that given a concrete _p_ is able to answer to that problem 
+    with yes, i.e., [true],  if _P p_, or no, i.e., [false], if _~P p_. *)
 
 Example solver_pos_example1 : solver <{ (x \/ ~y) /\ (~x \/ y) }> = true.
 Proof. reflexivity. Qed.
@@ -760,7 +762,7 @@ Proof. reflexivity. Qed.
 (* ================================================================= *)
 (** ** Soundness *)  
 
-(** Let us verify that the solver doesn't return false positives, meaning a
+(** Let us verify that the solver does not return false positives, meaning a
     formula is indeed satisfiable if the solver returns [true] for it. *)
 
 Lemma solver_sound : forall (p : form),

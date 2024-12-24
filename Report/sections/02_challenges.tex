@@ -14,7 +14,9 @@ We state an inductive definition of the type \texttt{form} with a set of constru
     p, q ::= x\;|\;\texttt{true}\;|\;\texttt{false}\;|\;p \land q\;|\;p \lor q\;|\;p \rightarrow q\;|\;\neg p
 \end{equation}
 
-For identifiers, we introduce the type \texttt{id} with a single constructor \texttt{Id} that wraps a string. We also define an equality function comparing two identifiers and returning \texttt{true} if and only if their contained strings are equal. To ease proof development in the rest of the project, we prove some basic lemmas about the function by case distinction, namely \emph{reflexivity}, \emph{equivalence with propositional equality}, and \emph{decidability} of equality of identifiers.
+For identifiers, we introduce the type \texttt{id} with a single constructor \texttt{Id} that wraps a string. 
+We also define an equality function comparing two identifiers and returning \texttt{true} if and only if their contained strings are equal. To ease proof development in the rest of the project, we prove some basic lemmas and theorems about the function by case distinction, namely \emph{reflexivity}, \emph{equivalence with propositional equality}, and \emph{decidability} of equality of identifiers.
+For the decidability theorem, one needs to ensure its proof is concluded by \texttt{Defined.} instead of \texttt{Qed.} as its proof object is needed in the computation of later used functions and thus has to be saved.
 
 \subsubsection{Concrete Syntax.}
 
@@ -143,7 +145,7 @@ Nevertheless, we factor out the recurrent patterns of deconstructing and rewriti
 
 \subsection{Solver}
 
-In this final section, we can finally deal with our SAT solver.
+In this section, we can finally deal with our SAT solver.
 Our idea is to collect representatives for all classes of valuations that are susceptible of satisfying a given formula and test them on the formula until one positive interpretation is found or no valuation matches.
 Indeed, only identifiers that are in a formula influence its interpretation, and we can safely map all identifiers not contained in a formula to \texttt{false} in our collected valuations:
 \begin{lemma}
@@ -171,16 +173,16 @@ Throughout this section, we will use the formula $(((x \rightarrow \neg y) \lor 
 
 \subsubsection{Extracting Identifiers.}
 
-To tackle the above-mentioned problem, we provide a dedicated recursive function \texttt{collect\_ids} that collects all identifiers of a formula without duplicates.
+To tackle the above-mentioned problem, we provide a dedicated recursive function \texttt{collect\_ids} that collects all identifiers of a formula without duplicates (compare example in figure \ref{fig:solver}).
 
 \begin{figure}[t]
     \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,label=lst:ids_union,caption=Custom duplicate free list merging function.]
-Fixpoint ids_union (l1 l2 : list id) :=
+Fixpoint ids_union (l1 l2 : list id) : list id :=
   match l1 with
   | [] => l2
   | x::xs => if existsb (eqb_id x) l2 then ids_union xs l2 else ids_union xs (x :: l2)
   end.
-\end{lstlisting}
+    \end{lstlisting}
 \end{figure}
 
 We wanted the result of the function to be a finite set but did not find a standard library implementation that fully corresponded to our expectations.
@@ -196,71 +198,114 @@ The most relevant property of \texttt{collect\_ids} is however the following:
 \begin{lemma}
     An identifier is contained in a formula $p$ if and only if it is contained in \texttt{collect\_ids\;$p$}.
 \end{lemma}
+\begin{proof}
+    We consider the forward ($\Longrightarrow$) and backward ($\Longleftarrow$) directions separately.
+    For both directions, the proof of the statement by induction on $p$ is fairly straightforward.
+    \begin{itemize}
+        \item In the forward direction, the conjunction, disjunction, and implication cases require a deconstruction of the hypothesis stating that some arbitrary but fixed identifier is contained in at least one subformula.
+        We can then show that identifiers of subformulas are preserved using our induction hypotheses.
+        \item The backward direction is analogous, using the fact that an identifier contained in the union of two sets is contained in at least one of the two sets. \qed
+    \end{itemize}
+\end{proof}
+While the proof simply requires a case distinction on our hypothesis and applying the relevant induction hypothesis for the inductive cases, the main difficulty was finding and plugging in relevant standard library lemmas when needed, avoiding proving already known facts.
+Other than that, the formal proof contained a lot of repetition, and we were able to significantly shorten it using \texttt{Ltac} for a common pattern of deconstruction followed by application and a succession of \texttt{try} tactics.
 
 \subsubsection{Collecting Valuations.}
+
+As we now have the ability to collect the identifiers of formulas, we need to transform identifier sets into a list of all relevant valuations that could satisfy this formula.
+We hence introduce the \texttt{collect\_vals} function.
+Its implementation maps each identifier of the passed set to \texttt{true} on top of the already collected valuations, which are already kept.
+One does not need to explicitly map identifiers to \texttt{false} since the function returns the empty valuation for the empty set, which maps all identifiers to \texttt{false}, and is hence always included in the resulting list (which we formally prove in \textsc{Coq}).
+
+\begin{figure}[t]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:old-collect_vals,caption=Original tail-recursive valuation collection function.]
+Fixpoint collect_vals (l : list id) (acc : list valuation) : list valuation :=
+  match l with
+  | [] => acc
+  | x::xs => collect_vals xs ((map (fun v => x !-> true ;; v) acc) €\texttt{++}€ (map (fun v => x !-> false ;; v) acc))
+  end.
+    \end{lstlisting}
+\end{figure}
+
+Initially, we implemented a tail-recursive version of the function based on an accumulator element as depicted in listing \ref{lst:old-collect_vals}.
+When called with \texttt{[empty\_valuation]} as starting accumulator, the function yields the desired result.
+However, while this allows code optimizations as all calls to the function are last, it complicates proving properties as some assumptions on the accumulator are required.
+This illustrates the often encountered trade-off between efficiency considerations of smart implementations and proof complexity.
+Additionally, we suspected at first that explicitly mapping newly added identifiers to \texttt{false} would make some proofs easier, but the opposite turned out to be the case.
+
+To verify the \texttt{collect\_vals} correctly includes valuations for both truth values of every identifier contained in the passed finite set, we prove we formally prove the following lemma in \textsc{Coq}:
+\begin{lemma}
+    For all identifier sets $S$, any $x \in S$ if and only if there exist valuations in \texttt{collect\_vals\;$S$} where $x$ is respectively mapped to \texttt{true} and \texttt{false}.
+\end{lemma}
+A significant part of the backward direction of this lemma was proven using a custom \texttt{Ltac} tactic. 
+Still, as \texttt{Ltac} is only quickly tackled in the course, we lacked the knowledge to automatically derive witnesses from the list of assumptions.
+
+\subsubsection{Searching Through Valuations.}
+
+\begin{figure}[t]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-check_vals,caption=Alternative valuation search functions.]
+Definition check_vals (p : form) (l : list valuation) : option valuation :=
+  let l' := map (fun v => if interp v p then Some v else None) l in
+  match find (fun o => match o with Some _ => true | None => false end) l' with
+  | Some o => o
+  | None => None
+  end.
+
+Definition check_vals' (p : form) (l : list valuation) : bool :=
+  existsb (fun b => b) (map (fun v => interp v p) l).
+    \end{lstlisting}
+\end{figure}
+
+The final solving step performed by \texttt{check\_vals} is to search through a list of valuations $l$ and return \texttt{Some $v$} if $v$, contained in $l$, satisfies the formula $p$.
+It returns \texttt{None} if no valuation matches.
+One considered option was to use the library function \texttt{map} to interpret all collected valuations on a formula, and then either \texttt{find} a matching valuation or, if the actually found valuation does not matter, return the first found \texttt{true} in the altered list.
+Two possible implementations are shown in listing \ref{lst:alt-check_vals}.
+Even though we avoid explicitly writing pattern matching and recursion, these options are both less efficient -- \texttt{interp} is applied to all valuations, not just the first satisfying the formula -- and complicate proofs, especially improving reliance on standard library lemmas.
+Consequently, in our final version of the function, we just recurse over the list of valuations until the first match, which is returned.
+Later valuations are not considered, as illustrated by our running example in figure \ref{fig:solver}.
+
+Putting it all together, the function \texttt{find\_valuation} accepts a formula $p$ and returns the result of the successive applications of \texttt{optim}, \texttt{collect\_ids}, \texttt{collect\_vals}, and \texttt{check\_vals}.
+Note that in the worst case, \texttt{find\_valuation} searches through all relevant valuations if no valuation satisfies the formula, leading to a worst-case complexity of $\mathcal{O}(n^2)$ with $n$ being the number of identifiers contained in the formula.
+Indeed, this makes sense as \textbf{NP} $\subseteq$ \textbf{EXPTIME}. % TODO: rethink this
+
+The function \texttt{solver} then connects the result of \texttt{find\_valuation} to booleans, i.e., returns \texttt{true} for \texttt{Some $v$} and \texttt{false} for \texttt{None}.
+In other words, \texttt{solver} is a \emph{decision procedure} \cite{kroening2016decision} for the boolean satisfiability problem.
+This means \texttt{solver} is an algorithm that, given a concrete formula $p$, can always answer the problem by yes (\texttt{true}) if $p$ is satisfiable, and by no (\texttt{false}) if it is not satisfiable.
+We will deal with the formal proof of this claim in the remainder of this subsection.
+
+\subsubsection{Soundness.}
+
+First, we need to show that \texttt{solver} has no false positives, i.e., does not falsely claim a formula to be satisfiable that is not.
+This gives rise to the \emph{soundness} lemma:
+\begin{lemma}
+    For all formulas $p$, if \texttt{solver $p$} returns \texttt{true}, then $p$ is satisfiable.
+\end{lemma}
+\begin{proof}
+    Assume \texttt{solver $p$} to return \texttt{true}.
+    This is only the case when \texttt{find\_valuation $p$} returns \texttt{Some $v$}.
+    We show by induction on the length of the list $l =$ \texttt{collect\_vals (collect\_ids (optim $p$))} that \texttt{interp $v$ (optim $p$)} is true, from which our claim directly follows as \texttt{optim} is semantics-preserving and $v$ is our witness for the satisfiability of $p$.
+    \begin{itemize}
+        \item Base case: if $l = \texttt{[]}$, \texttt{find\_valuation $p$} must be \texttt{None}, a contradiction with our hypothesis.
+        \item Inductive step: let $l = \texttt{$v'$::$vs$}$ and our induction hypothesis be \texttt{check\_vals (optim $p$) vs = Some $v \Longrightarrow$ interp $v$ $p$ = true}.
+        If \texttt{interp $v'$ $p$ = true}, then $v' = v$, and thus \texttt{find\_valuation $p$} returns \texttt{Some $v$}.
+        Otherwise, we can apply our induction hypothesis and our goal immediately follows from our hypothesis. \qed
+    \end{itemize}
+\end{proof}
+This can be concisely formalized in \textsc{Coq}.
+One needs to perform some careful unfoldings while not revealing the inner parts of \texttt{solver}: it is irrelevant which valuation is returned, just that some valuation is returned.
+Only then should the induction be performed.
+
+\subsubsection{Correctness.}
+
+\begin{lemma}
+    For all formulas $p$, if $p$ is satisfiable, then \texttt{solver $p$} returns \texttt{true}.
+\end{lemma}
+
+\begin{theorem}
+    For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable.
+\end{theorem}
 
 \subsection{Miscellaneous}
 
 Difficulty with Import/Export
-
-\subsection{A Subsection Sample}
-Please note that the first paragraph of a section or subsection is
-not indented. The first paragraph that follows a table, figure,
-equation etc. does not need an indent, either.
-
-Subsequent paragraphs, however, are indented.
-
-\subsubsection{Sample Heading (Third Level)} Only two levels of
-headings should be numbered. Lower level headings remain unnumbered;
-they are formatted as run-in headings.
-
-\paragraph{Sample Heading (Fourth Level)}
-The contribution should contain no more than four levels of
-headings. Table~\ref{tab1} gives a summary of all heading levels.
-
-\begin{table}
-\caption{Table captions should be placed above the
-tables.}\label{tab1}
-\begin{tabular}{|l|l|l|}
-\hline
-Heading level &  Example & Font size and style\\
-\hline
-Title (centered) &  {\Large\bfseries Lecture Notes} & 14 point, bold\\
-1st-level heading &  {\large\bfseries 1 Introduction} & 12 point, bold\\
-2nd-level heading & {\bfseries 2.1 Printing Area} & 10 point, bold\\
-3rd-level heading & {\bfseries Run-in Heading in Bold.} Text follows & 10 point, bold\\
-4th-level heading & {\itshape Lowest Level Heading.} Text follows & 10 point, italic\\
-\hline
-\end{tabular}
-\end{table}
-
-
-\noindent Displayed equations are centered and set on a separate
-line.
-\begin{equation}
-x + y = z
-\end{equation}
-Please try to avoid rasterized images for line-art diagrams and
-schemas. Whenever possible, use vector graphics instead (see
-Fig.~\ref{fig1}).
-
-\begin{figure}
-\includegraphics[width=\textwidth]{fig1.eps}
-\caption{A figure caption is always placed below the illustration.
-Please note that short captions are centered, while long ones are
-justified by the macro package automatically.} \label{fig1}
-\end{figure}
-
-\begin{theorem}
-This is a sample theorem. The run-in heading is set in bold, while
-the following text appears in italics. Definitions, lemmas,
-propositions, and corollaries are styled the same way.
-\end{theorem}
-%
-% the environments 'definition', 'lemma', 'proposition', 'corollary',
-% 'remark', and 'example' are defined in the LLNCS documentclass as well.
-%
-\begin{proof}
-Proofs, examples, and remarks have the initial word in italics,
-while the following text appears in normal font.
-\end{proof}
+Proved quite a lot of lemmas, often needed to keep track to not prove again (e.g., collect vals not empty can simply be proven by empty valuation in collect vals, no need for induction again as originally performed)
