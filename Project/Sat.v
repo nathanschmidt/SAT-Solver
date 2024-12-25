@@ -784,7 +784,9 @@ Proof.
 
 (** As final step towards the verification of our decision procedure, we now
     prove that if a formula is satisfiable, then our solver will correctly
-    return [true] for it. *)
+    return [true] for it. To this end, we need a few helper lemmas. We start off
+    by showing that two valuations identical for all variables contained in a
+    formula have the same interpretation. *)
 
 Lemma interp_eq : forall (v v' : valuation) (p : form),
   (forall (x : id), id_in_form x p = true -> v x = v' x) ->
@@ -794,7 +796,8 @@ Proof.
   induction p as [x | b' | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
                   q1 IHq1 q2 IHq2 | q IHq];
   (* q1 op q2 *) try (simpl; f_equal;
-    [try (f_equal; apply IHq1); try apply IHq1 | apply IHq2]; intros x Hq; simpl in H;
+    [try (f_equal; apply IHq1); try apply IHq1 | apply IHq2]; 
+    intros x Hq; simpl in H;
     assert (Hq1q2 : id_in_form x q1 || id_in_form x q2 = true);
     (* assert proof *) try (rewrite Hq; try rewrite orb_true_r; reflexivity);
     apply H in Hq1q2; exact Hq1q2).
@@ -806,16 +809,22 @@ Proof.
     apply H. simpl. exact Hq.
   Qed.
 
+(** Next, we want to show that [find_valuation] always considers all
+    combinations of mappings for contained variables, i.e., all valuations
+    always have an equivalent mapping that is checked by [solver]. We need
+    quite a few helper lemmas, however, we unfortunately did not manage to prove
+    the lemma itself. *)
+
 Lemma collect_vals_add_preserv : forall (v : valuation) (ids : set id) (x : id),
   In v (collect_vals ids) ->
   In v (collect_vals (id_set_add x ids)).
 Proof.
   intros v ids. generalize dependent v.
   induction ids as [| y ys IHys]; intros v x H; simpl in *.
-  - destruct H as [H | H].
+  - (* [] *) destruct H as [H | H].
     + right. left. exact H.
     + inversion H.
-  - rewrite in_app_iff in H. destruct H as [H | H].
+  - (* y :: ys *) rewrite in_app_iff in H. destruct H as [H | H].
     + rewrite in_map_iff in H. destruct H as [v' [H1 H2]]. 
       destruct (id_eq_dec x y).
       * subst. simpl. rewrite in_app_iff. left.
@@ -826,61 +835,45 @@ Proof.
         exists v'. split.
         -- assumption.
         -- apply IHys. exact H2.
-    + destruct (id_eq_dec x y).
-      * simpl. rewrite in_app_iff. right. exact H.
-      * simpl. rewrite in_app_iff. right.
-        apply IHys. exact H.
+    + destruct (id_eq_dec x y); simpl; rewrite in_app_iff; 
+      right; try apply IHys; exact H.
   Qed.
 
 Lemma collect_vals_union_preserv1 : forall (v : valuation) (ids1 ids2 : set id),
   In v (collect_vals ids1) ->
   In v (collect_vals (id_set_union ids1 ids2)).
 Proof.
-  intros v ids1 ids2.
-  generalize dependent ids1. generalize dependent v.
-  induction ids2 as [| x xs IHxs]; intros v ids1 H;
-  simpl in *.
+  intros v ids1 ids2 H. induction ids2 as [| x xs IHxs]; simpl in *.
   - (* [] *) exact H.
-  - (* x :: xs *) apply IHxs in H. apply collect_vals_add_preserv.
-    exact H.
+  - (* x :: xs *) apply collect_vals_add_preserv. exact IHxs.
   Qed.
 
 Lemma collect_vals_add_overr : forall (v : valuation) (x : id) (ids : set id),
   In v (collect_vals ids) ->
   In (x !-> true ;; v) (collect_vals (id_set_add x ids)).
 Proof. 
-  intros v x ids. generalize dependent x. generalize dependent v.
-  induction ids as [| y ys IHys]; intros v x H.
-  - simpl in H. destruct H as [H | H].
+  intros v x ids. generalize dependent v.
+  induction ids as [| y ys IHys]; intros v H; simpl in *.
+  - (* [] *) destruct H as [H | H].
     + subst. simpl. left. reflexivity.
     + inversion H.
-  - simpl in *. destruct (id_eq_dec x y).
-    + subst. rewrite in_app_iff in H. destruct H as [H | H].
-      * rewrite in_map_iff in H. destruct H as [v' [H1 H2]].
-        subst. rewrite override_shadow. simpl.
-        rewrite in_app_iff. left.
-        rewrite in_map_iff. exists v'. split.
-        -- reflexivity.
-        -- exact H2.
-      * simpl. rewrite in_app_iff. left.
-        rewrite in_map_iff. exists v. split.
-        -- reflexivity.
-        -- exact H.
-    + simpl. rewrite in_app_iff in H. destruct H as [H | H].
-      * rewrite in_map_iff in H. destruct H as [v' [H1 H2]].
-        subst. rewrite in_app_iff. left.
-        rewrite in_map_iff. exists (x !-> true ;; v'). split.
-        -- apply override_permute. assumption.
-        -- apply IHys. exact H2.
-      * rewrite in_app_iff. right. apply IHys. exact H.
+  - (* y :: ys *) destruct (id_eq_dec x y);
+    subst; simpl; rewrite in_app_iff in H; destruct H as [H | H]; simpl;
+    try (rewrite in_app_iff; right; apply IHys; assumption);
+    try (rewrite in_app_iff; left; rewrite in_map_iff);
+    try (rewrite in_map_iff in H; destruct H as [v' [H1 H2]]; subst).
+    + rewrite override_shadow. exists v'. split; [reflexivity | assumption].
+    + exists v. split; [reflexivity | assumption].
+    + exists (x !-> true ;; v'). split;
+      [apply override_permute | apply IHys]; assumption.
   Qed.
 
 Lemma collect_vals_union_preserv2 : forall (v : valuation) (ids1 ids2 : set id),
   In v (collect_vals ids2) ->
   In v (collect_vals (id_set_union ids1 ids2)).
 Proof.
-  intros v ids1 ids2. generalize dependent ids1. generalize dependent v.
-  induction ids2 as [| x xs IHxs]; intros v ids1 H.
+  intros v ids1 ids2. generalize dependent v.
+  induction ids2 as [| x xs IHxs]; intros v H.
   - (* ids2 = [] *) destruct ids1 as [| y ys].
     + (* ids1 = [] *) simpl. exact H.
     + (* ids1 = y :: ys *) simpl. destruct H as [H | H].
@@ -894,47 +887,36 @@ Proof.
     + simpl. apply collect_vals_add_preserv. apply IHxs. exact H.
   Qed.
 
-Lemma sheesh : forall (v1 v2 : valuation) (ids1 ids2 : set id) (b b' : bool),
-  In v1 (collect_vals ids1) -> In v2 (collect_vals ids2) ->
-  In (fun x => if b then v1 x else if b' then v2 x else empty_valuation x) 
-  (collect_vals (id_set_union ids1 ids2)).
+Lemma collect_vals_contains_combi : 
+  forall (v1 v2 : valuation) (ids1 ids2 : set id) (b b' : bool),
+    In v1 (collect_vals ids1) -> In v2 (collect_vals ids2) ->
+    In (fun x => if b then v1 x else if b' then v2 x else empty_valuation x) 
+    (collect_vals (id_set_union ids1 ids2)).
 Proof.
-  intros v1 v2 ids1 ids2. generalize dependent ids1.
-  generalize dependent v2. generalize dependent v1.
+  intros v1 v2 ids1 ids2. generalize dependent v2.
   induction ids2 as [| x xs IHxs];
-  intros v1 v2 ids1 b b' Hv1 Hv2; simpl in *.
+  intros v2 b b' Hv1 Hv2; simpl in *.
   - destruct Hv2 as [Hv2 | Hv2]; destruct b; destruct b'; subst; auto.
     + apply empty_valuation_in_collect_vals.
     + apply empty_valuation_in_collect_vals.
     + inversion Hv2.
     + inversion Hv2.
   - destruct b; destruct b'; 
-    rewrite in_app_iff in Hv2; rewrite in_map_iff in Hv2.
-    destruct Hv2 as [[v'' [Hv21 Hv22]] | Hv2];
-    subst.
-    + apply collect_vals_add_preserv. 
-      apply (IHxs v1 v'' ids1 true false Hv1) in Hv22.
-      assumption.
-    + apply collect_vals_add_preserv. 
-      apply (IHxs v1 v2 ids1 true false Hv1) in Hv2.
-      assumption.
-    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
-      * apply collect_vals_add_preserv.
-        apply (IHxs v1 v' ids1 true false Hv1) in Hv22.
-        assumption.
-      * apply collect_vals_add_preserv.
-        apply (IHxs v1 v2 ids1 true false Hv1) in Hv2.
-        assumption.
-    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
-      * apply collect_vals_add_overr.
-        apply (IHxs v1 v' ids1 false true Hv1) in Hv22.
-        assumption.
-      * apply collect_vals_add_preserv.
-        apply (IHxs v1 v2 ids1 false true Hv1) in Hv2.
-        assumption.
-    + destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst.
-      * apply empty_valuation_in_collect_vals.
-      * apply empty_valuation_in_collect_vals.
+    rewrite in_app_iff in Hv2; rewrite in_map_iff in Hv2;
+    destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst;
+    try apply empty_valuation_in_collect_vals.
+    + apply collect_vals_add_preserv.
+      apply (IHxs v' true false Hv1) in Hv22. assumption.
+    + apply collect_vals_add_preserv.
+      apply (IHxs v2 true false Hv1) in Hv2. assumption.
+    + apply collect_vals_add_preserv.
+      apply (IHxs v' true false Hv1) in Hv22. assumption.
+    + apply collect_vals_add_preserv.
+      apply (IHxs v2 true false Hv1) in Hv2. assumption.
+    + apply collect_vals_add_overr.
+      apply (IHxs v' false true Hv1) in Hv22. assumption.
+    + apply collect_vals_add_preserv.
+      apply (IHxs v2 false true Hv1) in Hv2. assumption.
   Qed.
 
 Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form),
@@ -943,7 +925,20 @@ Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form),
     In v' (collect_vals (collect_ids p)).
 Proof.
   intros v p. induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
-                                   q1 IHq1 q2 IHq2 | q IHq].
+                                   q1 IHq1 q2 IHq2 | q IHq];
+  (* q1 op q2 *) try (destruct IHq1 as [v1 [IHq11 IHq12]];
+    destruct IHq2 as [v2 [IHq21 IHq22]]; simpl;
+    exists (fun y => 
+      if id_in_form y q1 
+        then v1 y 
+      else if id_in_form y q2 
+        then v2 y 
+      else empty_valuation y);
+    split;
+    [intros x H; rewrite orb_true_iff in H; destruct H as [H | H]; rewrite H;
+      [apply IHq11; assumption | destruct (id_in_form x q1) eqn:Exq1;
+        [apply IHq11 | apply IHq21]; assumption] |
+      (* eapply (collect_vals_contains_combi)*) admit]).
   - (* y *) exists (y !-> v y). split.
     + intros x H. simpl in H. rewrite eqb_id_eq in H. subst.
       rewrite override_eq. reflexivity.
@@ -956,13 +951,13 @@ Proof.
   - (* bool *) exists empty_valuation. split.
     + intros x H. inversion H.
     + apply empty_valuation_in_collect_vals.
-  - (* q1 /\ q2 *) destruct IHq1 as [v1 [IHq11 IHq12]].
-    destruct IHq2 as [v2 [IHq21 IHq22]]. simpl.
-    exists (fun y => if id_in_form y q1 then v1 y else if id_in_form y q2 then v2 y else empty_valuation y).
-    split.
-    + admit.
-    + admit. (* eapply (sheesh IHq12). *)
+  - (* ~q *) destruct IHq as [v' [IHq1 IHq2]]. exists v'. split.
+    + intros x H. apply IHq1. simpl in H. exact H.
+    + simpl. exact IHq2.
   Admitted.
+
+(** Now, assuming [v_equiv_in_collect_vals] holds, we could show the 
+    completeness of our solver. *)
 
 Lemma solver_complete : forall (p : form),
   satisfiable p -> solver p = true.
@@ -977,16 +972,17 @@ Proof.
   { apply v_equiv_in_collect_vals. }
   destruct Hv' as [v' [Hv'1 Hv'2]].
   apply interp_eq in Hv'1.
-  induction (collect_vals (collect_ids (optim p))).
-  - simpl in Hv'2. inversion Hv'2.
-  - simpl in Hv'2. destruct Hv'2 as [Hv'2 | Hv'2].
-    + subst. simpl. rewrite H in Hv'1. rewrite <- Hv'1.
-      reflexivity.
-    + apply IHl in Hv'2. simpl.
-      destruct (interp a (optim p)).
-      * reflexivity.
-      * exact Hv'2.
+  induction (collect_vals (collect_ids (optim p))) as [| h t IHt]; 
+  simpl in Hv'2.
+  - (* [] *) inversion Hv'2.
+  - (* h :: t *) destruct Hv'2 as [Hv'2 | Hv'2].
+    + subst. simpl. rewrite H in Hv'1. rewrite <- Hv'1. reflexivity.
+    + apply IHt in Hv'2. simpl. 
+      destruct (interp h (optim p)); [reflexivity | assumption].
   Qed. 
+
+(** From the soundness and completeness of our solver, it would indeed follow
+    that it is a correct decision procedure for [satisfiable]. *)
 
 Theorem solver_decision_procedure : forall (p : form),
   solver p = true <-> satisfiable p.
