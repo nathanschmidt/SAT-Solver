@@ -295,15 +295,65 @@ This can be concisely formalized in \textsc{Coq}.
 One needs to perform some careful unfoldings while not revealing the inner parts of \texttt{solver}: it is irrelevant which valuation is returned, just that some valuation is returned.
 Only then should the induction be performed.
 
-\subsubsection{Correctness.}
+\subsubsection{Completeness.}
+
+Showing the completeness of \texttt{solver} was the most challenging part of the project, which we unfortunately did not fully manage to wrap up.
+Indeed, one cannot blindly apply induction as the hypothesis is not directly usable to prove the lemma, and it took us a lot of time to figure out a coherent reasoning, writing a lot of later unused and removed helper lemmas.
+
+The hypothesis that a formula $p$ is satisfiable means a valuation $v$ exists such that \texttt{interp $v$ $p$} is \texttt{true}.
+However, it is in no way guaranteed that this is the valuation that will be found by \texttt{find\_valuation}.
+In fact, it cannot be shown at all that this valuation will be found as our solver only looks at a subset of all valuations.
+The problem has its roots in valuations being total maps.
+For instance, let $v$ satisfy the formula $x \lor y$.
+It is perfectly possible for $v$ to map an identifier $z$ not contained in the formula to \texttt{true} as this does not influence the formula's interpretation.
+This consequently means our solver will not consider this exact $v$, as all uncontained identifiers are mapped to \texttt{false}.
+
+Consequently, we first have to deduce our solver will consider some \emph{equivalent} $v'$.
+This requires a formalization of the notion of equivalence first:
+\begin{lemma}
+    For all valuations $v$, $v'$, and formulas $p$, if $v$ and $v'$ map all identifiers contained in $p$ to the same value, then the interpretation of $p$ under the context of these two valuations is identical.
+\end{lemma}
+The main difficulty for this lemma does not lie in its proof, which can be performed by induction on $p$, but in the careful translation of this statement in \textsc{Coq}.
+One needs to note that
+\begin{lstlisting}[language=coq]
+forall (v v' : valuation) (p : form) (x : id),
+    (id_in_form x p = true -> v x = v' x) -> interp v p = interp v' p
+\end{lstlisting}
+only means $v$ and $v'$ correspond in a single identifier, which naturally does not imply their interpretations to be identical.
+We rather need to nest the universal quantifier for $x$ as follows:
+\begin{lstlisting}[language=coq]
+forall (v v' : valuation) (p : form),
+    (forall (x : id), id_in_form x p = true -> v x = v' x) -> interp v p = interp v' p
+\end{lstlisting}
+This nesting is, however, what will later lead our reasoning for the correctness proof not to be formalizable in \textsc{Coq}.
+
+Now, we want to prove that \texttt{find\_valuation} will truly consider a valuation $v'$ equivalent to the known satisfying valuation $v$:
+\begin{lemma}\label{lem:collect_equiv_v}
+    For all valuations $v$ and formulas $p$, there exists a valuation $v'$ such that $v$ and $v'$ map all identifiers contained in $p$ to the same value and $v'$ is in \texttt{collect\_vals (collect\_ids $p$))}.
+\end{lemma}
+To formally show this in \textsc{Coq}, we first have to prove that \texttt{collect\_vals} preserves valuations when performing the union of identifier sets, i.e., if a valuation is contained in \texttt{collect\_vals $S$}, then it is also contained in \texttt{collect\_vals (id\_set\_union $S$ $S'$)} and in \texttt{collect\_vals (id\_set\_union $S'$ $S$)} for some second set $S'$.
+Additionally, we also show that arbitrary combinations of valuations $v \in S$ and $v' \in S'$ are contained in \texttt{collect\_vals (id\_set\_union $S$ $S'$)}.
+This illustrates the structure of how \texttt{collect\_vals} constructs all necessary valuations.
+These lemmas are all shown by induction on the second set applied to \texttt{id\_set\_union} as this is the argument it recurses on.
+We also have to be careful and keep our induction hypotheses as general as possible and not introduce valuations too early.
+Therefore, we make use of \texttt{generalize dependent} before using the \texttt{induction} tactic.
+
+We tried proving lemma \ref{lem:collect_equiv_v} by induction on $p$.
+The problem we face for the cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$, and $p = q_1 \rightarrow q_2$, is that to know which of the two induction hypotheses to apply % have to destruct but can't as universally quantified
+% eexists and assert didn't help
+% sheesh didn't help as well as it can't unify i suppose
 
 \begin{lemma}
     For all formulas $p$, if $p$ is satisfiable, then \texttt{solver $p$} returns \texttt{true}.
 \end{lemma}
 
+
 \begin{theorem}
-    For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable.
+    For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable, i.e., \texttt{solver} is a decision procedure for the satisfiability problem.
 \end{theorem}
+\begin{proof}
+    Direct consequence of the soundness and completeness of \texttt{solver}. \qed
+\end{proof}
 
 \subsection{Miscellaneous}
 
