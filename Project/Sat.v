@@ -644,7 +644,7 @@ Proof.
   - rewrite in_app_iff. right. exact IHxs.
   Qed.
 
-Lemma collect_vals_not_empty : forall (ids : set id),
+Corollary collect_vals_not_empty : forall (ids : set id),
   collect_vals ids <> [].
 Proof.
   intros ids contra1.

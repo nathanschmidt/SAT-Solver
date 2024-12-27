@@ -5,7 +5,7 @@ Great numbers of problems in computer science can easily be reduced to SAT, and 
 
 \bigbreak
 
-In this project, we implement a small formally verified SAT-Solver in the \textsc{Coq} proof assistant for formulas containing conjunctions, disjunctions, implications, and negations. 
+In this project, we implement a small formally verified SAT solver for formulas containing conjunctions, disjunctions, implications, and negations with the help of the \textsc{Coq} proof assistant \cite{coq_ref_man}. 
 To that end, we start by formalizing the syntax of such formulas. 
 Then, we introduce their semantic interpretation given a specified valuation. 
 Following the implementation of a syntactic optimizer that we show to simplify a formula to its minimal form, we conclude this work by implementing the actual solver based on a brute-force search algorithm and prove it to be both correct and complete.

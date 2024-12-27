@@ -1,15 +1,15 @@
 \section{Implementation and Encountered Problems}\label{sec:impl}
 
-In this section, we present our implementation choices and compare them to discarded alternatives to justify them. 
+This section presents our implementation choices and compares them to discarded alternatives to justify them. 
 We also describe what difficulties we encountered during development and how we addressed them.
 
 \subsection{Syntax}
 
-First, we formalize the abstract syntax of boolean formulas containing conjunctions, disjunctions, implications, and negations. 
+First, we formalize the syntax of the boolean formulas we consider. 
 
 \subsubsection{Abstract Syntax.}
 
-We state an inductive definition of the type \texttt{form} with a set of constructors describing how to build up a formula:
+We inductively define the type \texttt{form} with the help of which we can build up formulas:
 \begin{equation}
     p, q ::= x\;|\;\texttt{true}\;|\;\texttt{false}\;|\;p \land q\;|\;p \lor q\;|\;p \rightarrow q\;|\;\neg p
 \end{equation}
@@ -310,7 +310,7 @@ This consequently means our solver will not consider this exact $v$, as all unco
 
 Consequently, we first have to deduce our solver will consider some \emph{equivalent} $v'$.
 This requires a formalization of the notion of equivalence first:
-\begin{lemma}
+\begin{lemma}\label{lem:interp_eq}
     For all valuations $v$, $v'$, and formulas $p$, if $v$ and $v'$ map all identifiers contained in $p$ to the same value, then the interpretation of $p$ under the context of these two valuations is identical.
 \end{lemma}
 The main difficulty for this lemma does not lie in its proof, which can be performed by induction on $p$, but in the careful translation of this statement in \textsc{Coq}.
@@ -339,23 +339,70 @@ We also have to be careful and keep our induction hypotheses as general as possi
 Therefore, we make use of \texttt{generalize dependent} before using the \texttt{induction} tactic.
 
 We tried proving lemma \ref{lem:collect_equiv_v} by induction on $p$.
-The problem we face for the cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$, and $p = q_1 \rightarrow q_2$, is that to know which of the two induction hypotheses to apply % have to destruct but can't as universally quantified
-% eexists and assert didn't help
-% sheesh didn't help as well as it can't unify i suppose
+The problem we face for the cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$, and $p = q_1 \rightarrow q_2$, is that to know which of the two induction hypotheses to apply, we would have to introduce an arbitrary but fixed identifier $x$ and distinguish if it is contained in $q_1$ or $q_2$.
+However, this cannot be done in \textsc{Coq} as the universal quantifier for $x$ is nested.
+Consequently, $x$ cannot be introduced without explicitly providing a witness for $v'$ beforehand, but the proper choice, in turn, depends on the case distinction.
+We tried different options to try and circumvent the problem, such as making explicit assertions.
+Using the \texttt{eexists} tactic also did not yield the wished effect since it uses the first found witness in all subsequent cases, where it does not work anymore.
+As there is no such concept as dependent witnesses, our final attempt was to shift the case distinction inside the valuation, i.e., providing 
+\begin{lstlisting}[language=coq]
+fun x => if id_in_form x q1 then v1 x else if id_in_form x q2 then v2 x else empty_valuation x
+\end{lstlisting}
+as a witness and making use of one of our helper lemmas.
+Yet, \textsc{Coq} cannot unify our goal with the lemma, probably because the valuation's argument is not part of the context.
+Replacing the arbitrary booleans in the lemma with the specific condition makes the lemma unprovable.
+Therefore, we have seen ourselves forced to \texttt{admit} the concerned parts of the formal proof.
 
+Admitting lemma \ref{lem:collect_equiv_v} to hold, all prerequisites are united to prove the completeness of \texttt{solver} and subsequently that \texttt{solver} is a decision procedure for SAT:
 \begin{lemma}
     For all formulas $p$, if $p$ is satisfiable, then \texttt{solver $p$} returns \texttt{true}.
 \end{lemma}
-
+\begin{proof}
+    Assume $p$ to be satisfiable, i.e., there exists a valuation $v$ such that \texttt{interp $v$ $p$} is \texttt{true}.
+    By lemma \ref{lem:interp_eq} and \ref{lem:collect_equiv_v}, we know that there exists a valuation $v'$ in \texttt{collect\_vals (collect\_ids $p$)} with the same interpretation as $v$.
+    Consequently, \texttt{interp $v'$ $p$} is true, and, as we know our optimizer to be correct, \texttt{interp $v'$ (optim $p$)} is \texttt{true} as well.
+    By induction on \texttt{collect\_vals (collect\_ids (optim $p$))}, it is easy to show \texttt{solver $p$} returns \texttt{true}. \qed
+\end{proof}
 
 \begin{theorem}
     For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable, i.e., \texttt{solver} is a decision procedure for the satisfiability problem.
 \end{theorem}
 \begin{proof}
-    Direct consequence of the soundness and completeness of \texttt{solver}. \qed
+    A direct consequence of the soundness and completeness of \texttt{solver}. \qed
 \end{proof}
 
 \subsection{Miscellaneous}
 
-Difficulty with Import/Export
-Proved quite a lot of lemmas, often needed to keep track to not prove again (e.g., collect vals not empty can simply be proven by empty valuation in collect vals, no need for induction again as originally performed)
+To close off the discussion of our project, we provide an alternative implementation strategy for our valuation collection function and describe further challenges.
+
+\begin{figure}[t]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-collect_vals,caption=Alternative valuation collection function and converter.]
+Fixpoint collect_vals (ids : set id) : list (list (id * bool)) :=
+  match ids with
+  | [] => [[]]
+  | x::xs => let vs := collect_vals xs in map (cons (x, true)) vs €\texttt{++}€ map (cons (x, false)) vs
+  end.
+
+Fixpoint idbools_to_val (l : list (id * bool)) : valuation :=
+  match l with
+  | [] => empty_valuation
+  | v::vs => override (idbools_to_val vs) (fst v) (snd v)
+  end.
+    \end{lstlisting}
+\end{figure}
+
+Instead of explicitly collecting a list of all possible valuations, one could compute a list of lists of pairs of identifiers and truth values where a pair represents a mapping from an identifier to its value.
+Then in \texttt{check\_vals}, one could not directly plug in valuations but would need to convert lists of pairs to valuations.
+Listing \ref{lst:alt-collect_vals} presents possible implementations of the described changes.
+One hope is that these changes would counteract the problems encountered when proving the completeness of \texttt{solver}: one would still have a problem with dependent witnesses but could maybe find a witness taking into account the structure of \texttt{collect\_vals} and working in all cases, as one would not have to show function equality, which is particularly difficult.
+A supposed accurate witness is \texttt{(l1 ++ filter (fun v2 => existsb (fun v1 => negb (eqb\_id (fst v1) (fst v2))) l1) l2)} for lists \texttt{l1}, \texttt{l2}, even though at first sight the inclusion of \texttt{filter} seemed problematic since the standard library does not contain appropriate lemmas.
+Unfortunately, we did not have the time to investigate this alternative implementation strategy further.
+
+Another observation we made is that because of the great amount of lemmas we have proven, it is easy to lose track, especially for later parts of the project where we added and then discarded many propositions.
+As a result, some proof scripts are more lengthy and complex than necessary.
+For example, we first proved the lemma stating that the result of \texttt{collect\_vals} is never the empty list using induction but later realized that the lemma is a corollary from an already proven lemma, namely that the empty valuation is contained in every resulting list. 
+
+The final challenge we want to elaborate on is dealing with \textsc{Coq}'s module management system, in particular the \texttt{Require}, \texttt{Import}, and \texttt{Export} commands.
+In our project's draft, we used the provided library file\footnote{\url{https://www.cs.au.dk/~spitters/project_lib.v}}. 
+Even though, in the end, we merged the whole project into a single file since we only used a fraction of the provided definitions of the library file, during the project's development, we encountered a multitude of unexpected behaviors, e.g., the \texttt{app} function spuriously rejecting its provided arguments.
+Hence, we tried broadening our knowledge on the matter by reading excerpts of \textsc{Coq}'s platform documentation\footnote{\url{https://coq.inria.fr/platform-docs/RequireImportTutorial.html}} as it is only sparingly covered in the course. % TODO: cite?
