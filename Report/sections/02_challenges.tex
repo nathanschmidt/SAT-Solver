@@ -5,27 +5,27 @@ We also describe what difficulties we encountered during development and how we 
 
 \subsection{Syntax}
 
-First, we formalize the syntax of the boolean formulas we consider. 
+First, we formalize the syntax of the types of boolean formulas we consider. 
 
 \subsubsection{Abstract Syntax.}
 
 We inductively define the type \texttt{form} with the help of which we can build up formulas:
-\begin{equation}
+\begin{equation*}
     p, q ::= x\;|\;\texttt{true}\;|\;\texttt{false}\;|\;p \land q\;|\;p \lor q\;|\;p \rightarrow q\;|\;\neg p
-\end{equation}
-
+\end{equation*}
 For identifiers, we introduce the type \texttt{id} with a single constructor \texttt{Id} that wraps a string. 
-We also define an equality function comparing two identifiers and returning \texttt{true} if and only if their contained strings are equal. To ease proof development in the rest of the project, we prove some basic lemmas and theorems about the function by case distinction, namely \emph{reflexivity}, \emph{equivalence with propositional equality}, and \emph{decidability} of equality of identifiers.
-For the decidability theorem, one needs to ensure its proof is concluded by \texttt{Defined.} instead of \texttt{Qed.} as its proof object is needed in the computation of later used functions and thus has to be saved.
+We also define an equality function comparing two identifiers and returning \texttt{true} if and only if their wrapped strings are equal. 
+To ease proof development in the rest of the project, we prove some basic lemmas and theorems about the equality function by case distinction, namely \emph{reflexivity}, \emph{equivalence with propositional equality}, and \emph{decidability} of identifier-equality.
+For the decidability theorem, one needs to ensure its proof is concluded by \texttt{Defined.} instead of \texttt{Qed.} as its proof object is needed in the computation of later defined functions and thus has to be saved.
 
 \subsubsection{Concrete Syntax.}
 
 To make reading and writing formulas easier, we use \textsc{Coq}'s \texttt{Notation}s system, as well as a \texttt{Coercion} from an identifier as a formula. 
 The main difficulty lies in assigning precedence levels to the individual constructors that pay respect to the commonly assumed binding of operators. 
 Given the \emph{binds stronger} relation ($>$), that is:
-\begin{equation}
+\begin{equation*}
     \neg > \land > \lor >\,\rightarrow
-\end{equation}
+\end{equation*}
 For example, $x \lor \neg y \land z \rightarrow \texttt{false}$ is interpreted as $(x \lor ((\neg y) \land z) \rightarrow \texttt{false}$. 
 
 \subsection{Semantics}

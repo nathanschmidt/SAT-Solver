@@ -84,8 +84,7 @@ Inductive form : Type :=
 (** For ease of reading, we specify notations representing the concrete syntax
     of formulas in Coq. *)
 
-(* TODO: what am I doing here? *)
-Coercion form_id : id >-> form. (* TODO: what am I doing here? *)
+Coercion form_id : id >-> form.
 Declare Custom Entry form. 
 Notation "<{ p }>" := p (p custom form at level 99).
 Notation "( p )" := p (in custom form, p at level 90). 

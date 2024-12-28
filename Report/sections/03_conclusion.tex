@@ -1,3 +1,40 @@
-\section{Conclusion}
+\section{Conclusion and Reflection}
 
 This section concludes the report and offers a reflection of our personal experience working with the interactive theorem prover \textsc{Coq}.
+
+\subsection{Conclusion}
+
+In this project, we implemented and formalized a small brute-force SAT solver and encountered some difficulties dealing with the intricacies of \textsc{Coq}.
+Our concrete syntax using \texttt{Notation}s caused conflicts with list notations, as well as initially having a separate library file.
+At first, \textsc{Coq}'s requirement for strictly decreasing arguments for recursive functions also made the implementation of our optimizer harder but later forced us to implement it in a bottom-up manner, which proved the better approach anyway.
+When implementing our solver, we were faced with difficulties proving propositions about functions using accumulators.
+We also found it challenging to find fitting pre-defined data structures in the standard library, and to automate large parts of our proofs, even though they had a quite similar structure, especially as existential quantification requires the explicit introduction of witnesses.
+Finally, we found out that nested quantifications make proofs significantly harder, as do functions in the propositions, as to prove their equality one usually needs the functional extensionality axiom.
+
+\subsection{Reflection}
+
+We personally found it quite intuitive to write programs and proofs in \textsc{Coq}.
+The syntactic style closely resembles \textsc{OCaml}'s, which we already had some multi-year experience with.
+Tactic scripts are a sensible simulation of informal reasoning, and bullets structure proofs well.
+In general, writing programs and proving their properties feel closely intertwined, which leads to a pleasant workflow.
+Additionally, features such as a compiler are useful tools.
+\textsc{Coq} mostly returns comprehensible error messages.
+We also appreciate the ease of documentation offered by \texttt{coqdoc}, which one can quickly pick up.
+
+In contrast, we also experienced the limitations of \textsc{Coq}'s constructive logic, making some propositions harder or even impossible to prove.
+This has to be carefully considered when developing programs, which limits the range of implementation choices.
+Having previously been shortly introduced to the \textsc{Isabelle/HOL} proof assistant, we felt it is less intuitive and harder to internalize. 
+Still, it supports different proof styles more natively and follows mathematical reasoning more closely, ultimately seeming to be more reasonable to learn in the long run.
+Moreover, the level of detail required by \textsc{Coq} can become frustrating, e.g., having to use tactics like \texttt{symmetry} or \texttt{reflexivity} frequently.
+Automation potential seems limited compared to \textsc{Isabelle/HOL}, at the cost of having to deal with nitty-gritty details.
+
+Narrowed down, the choice of proof assistant to us ultimately is related to its intended use.
+Focusing on \textsc{Coq} and \textsc{Isabelle/HOL}, we observe a trade-off between better readability and relatability of proofs offered by the former and more powerful and time-saving automation, sometimes at the cost of understanding what is actually happening in the background, by the latter.
+We mostly see \textsc{Coq} as a great choice to formally check proofs we mostly thought through already, whereas Isabelle is more about finding intermediate goals that it can automatically reach, especially considering the presence of power tools such as \texttt{sledgehammer} or \texttt{nitpick}.
+
+% pro: closely follows structure of informal reasoning, i like tactic scripts and bullets, programming close to ocaml which i know so nice, compiler, coqdoc
+
+% neg: limitations of constructive logic, required order of introduction, symmetry, reflexivity etc., no tactics such as contradiction (check Semantics slides)
+
+% Mainly: good readability vs. reducing effort
+% For me, coq more to formally check mostly thougt-through proofs, Isabelle more automation, hides some steps, more powerful
