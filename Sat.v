@@ -184,16 +184,6 @@ Proof.
   reflexivity.
   Qed.
 
-Lemma override_same : forall (v : valuation) (x : id),
-  (x !-> v x ;; v) = v.
-Proof.
-  intros v x. unfold override.
-  apply functional_extensionality.
-  intros x'. destruct (eqb_id x x') eqn:Exx'.
-  - f_equal. rewrite eqb_id_eq in Exx'. exact Exx'.
-  - reflexivity.
-  Qed.
-
 Lemma override_shadow : forall (v : valuation) (x : id) (b1 b2 : bool),
   (x !-> b2 ;; x !-> b1 ;; v) = (x !-> b2 ;; v).
 Proof.
@@ -204,21 +194,16 @@ Proof.
 
 Lemma override_permute : forall (v : valuation) (x1 x2 : id) (b1 b2 : bool),
   x2 <> x1 ->
-  (x1 !-> b1 ;; x2 !-> b2 ;; v)
-  =
-  (x2 !-> b2 ;; x1 !-> b1 ;; v).
+  (x1 !-> b1 ;; x2 !-> b2 ;; v) = (x2 !-> b2 ;; x1 !-> b1 ;; v).
 Proof.
   intros v x1 x2 b1 b2 H. unfold override.
   apply functional_extensionality.
   intros x. destruct (eqb_id x1 x) eqn:Ex1x.
   - destruct (eqb_id x2 x) eqn:Ex2x.
-    + rewrite eqb_id_eq in Ex1x. rewrite Ex1x in H. 
-      rewrite eqb_id_eq in Ex2x. rewrite Ex2x in H.
-      exfalso. apply H. reflexivity.
+    + rewrite eqb_id_eq in Ex1x. rewrite eqb_id_eq in Ex2x.
+      subst. contradiction.
     + reflexivity.
-  - destruct (eqb_id x2 x) eqn:Ex2x.
-    + reflexivity.
-    + reflexivity.
+  - destruct (eqb_id x2 x) eqn:Ex2x; reflexivity.
   Qed.
 
 (* ================================================================= *)
@@ -626,9 +611,9 @@ Fixpoint collect_vals (ids : set id) : list valuation :=
     map (fun y => x !-> true ;; y) xs_vals ++ xs_vals
   end.
 
-Example collect_vals_example : collect_vals [x; y] = 
-  [(x !-> true ;; y !-> true) ; (x !-> true) ;
-   (y !-> true) ; empty_valuation].
+Example collect_vals_example : 
+  collect_vals [x; y] = 
+  [(x !-> true ;; y !-> true) ; (x !-> true) ; (y !-> true) ; empty_valuation].
 Proof. reflexivity. Qed.
 
 (** With the use of two helper lemmas, we show that for all identifiers, we
@@ -895,11 +880,9 @@ Proof.
   intros v1 v2 ids1 ids2. generalize dependent v2.
   induction ids2 as [| x xs IHxs];
   intros v2 b b' Hv1 Hv2; simpl in *.
-  - destruct Hv2 as [Hv2 | Hv2]; destruct b; destruct b'; subst; auto.
-    + apply empty_valuation_in_collect_vals.
-    + apply empty_valuation_in_collect_vals.
-    + inversion Hv2.
-    + inversion Hv2.
+  - destruct Hv2 as [Hv2 | Hv2]; destruct b; destruct b'; subst; auto;
+    try apply empty_valuation_in_collect_vals.
+    inversion Hv2.
   - destruct b; destruct b'; 
     rewrite in_app_iff in Hv2; rewrite in_map_iff in Hv2;
     destruct Hv2 as [[v' [Hv21 Hv22]] | Hv2]; subst;
@@ -924,7 +907,7 @@ Lemma v_equiv_in_collect_vals : forall (v : valuation) (p : form),
     In v' (collect_vals (collect_ids p)).
 Proof.
   intros v p. induction p as [y | b | q1 IHq1 q2 IHq2 | q1 IHq1 q2 IHq2 | 
-                                   q1 IHq1 q2 IHq2 | q IHq];
+                              q1 IHq1 q2 IHq2 | q IHq];
   (* q1 op q2 *) try (destruct IHq1 as [v1 [IHq11 IHq12]];
     destruct IHq2 as [v2 [IHq21 IHq22]]; simpl;
     exists (fun y => 

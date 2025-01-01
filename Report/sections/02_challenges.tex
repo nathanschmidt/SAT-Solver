@@ -20,82 +20,81 @@ For the decidability theorem, one needs to ensure its proof is concluded by \tex
 
 \subsubsection{Concrete Syntax.}
 
-To make reading and writing formulas easier, we use \textsc{Coq}'s \texttt{Notation}s system, as well as a \texttt{Coercion} from an identifier as a formula. 
-The main difficulty lies in assigning precedence levels to the individual constructors that pay respect to the commonly assumed binding of operators. 
-Given the \emph{binds stronger} relation ($>$), that is:
+To make reading and writing formulas easier, we use \texttt{Notation}s and a \texttt{Coercion} from an identifier as a formula. 
+The main difficulty lies in assigning precedence levels to the individual constructors of \texttt{form} that pay respect to the commonly assumed binding of operators. 
+Precedences are assigned according to a \emph{binds stronger} relation ($>$):
 \begin{equation*}
     \neg > \land > \lor >\,\rightarrow
 \end{equation*}
 For example, $x \lor \neg y \land z \rightarrow \texttt{false}$ is interpreted as $(x \lor ((\neg y) \land z) \rightarrow \texttt{false}$. 
 
+\pagebreak
+
 \subsection{Semantics}
 
-Now that we can write a formula in \textsc{Coq}, we want to define its semantics, i.e., if we interpret it as \texttt{true} or \texttt{false}.
+Now that we can write formulas in \textsc{Coq}, we want to define their semantics, i.e., determine when to interpret them as \texttt{true} or \texttt{false}.
 
 \subsubsection{Valuations.} % TODO: clarify valuation notation
 
-To do so, we need to know which boolean values to replace all identifiers occurring in a formula with.
+To do so, we need to know which boolean values to replace the identifiers occurring in a formula with.
 Therefore, we define the type \texttt{valuation}. 
-A \emph{valuation} is a function that, being passed an identifier, returns \texttt{true} or \texttt{false}, or, in other words, a valuation is a total map from identifiers to booleans. 
-Our implementation is analogous to the total map defined by Pierce et al. in \cite{pierceSF}.
-% An empty valuation is a valuation that returns \texttt{false} for all arguments.
+A \emph{valuation} is a function that, being passed an identifier, returns \texttt{true} or \texttt{false}, or, in other words, it is a total map from identifiers to booleans. 
+Our implementation is analogous Pierce et al.'s in \cite{pierceSF}.
 
 Again, to simplify writing and reading valuations, we introduce a \texttt{Notation} \texttt{x !-> b ;; v} to override a valuation \texttt{v} with a new value \texttt{b} for \texttt{x}. 
-At first, we used just a single semicolon, but this caused conflicts with list notations. 
-Additionally, we define an empty valuation to map all identifiers to \texttt{false}.
-
-We also specify some lemmas of \cite{pierceSF} for later reasonings. 
+\texttt{x !-> b} overrides the empty valuation, defined to map all identifiers to \texttt{false}.
+At first, we used a single semicolon instead of two, but this caused conflicts with list notations.
+We also specify some lemmas based on \cite{pierceSF} for later reasonings. 
 Their proofs rely on the functional extensionality axiom, stating that two functions are equal if and only if their applications to all their possible arguments are equal. 
 It is known to be compatible with \textsc{Coq}'s logical core.
 
 \subsubsection{Interpreter.}
 
 The \texttt{valuation} type allows us to define a recursive interpretation function \texttt{interp}.
-Applied to a valuation and a formula, it returns \texttt{true} if and only if the formula holds by traversing a formula bottom-up and pattern matching on it.
+Applied to a valuation and a formula, it returns \texttt{true} if and only if the formula holds.
+It traverses the provided formula bottom-up and applies pattern matching to it.
 All the necessary functions, such as \texttt{andb}, \texttt{orb}, and \texttt{negb} are already implemented in \textsc{Coq}. 
 They even suffice to compute the result of an implication since $p \rightarrow q$ is known to be equivalent to $\neg p \lor q$.
 
 \subsection{Optimizer}
 
-Sometimes, a formula's interpretation can be derived or, at least, simplified on a purely syntactical level, leaving it in a form that is easier to read and reason upon and marginally reducing the computation effort needed by the interpretation function while preserving the semantics.
+Sometimes, a formula's interpretation can be derived or, at least, simplified on a purely syntactical level, leaving it in a form that is easier to read and reason upon and marginally reducing the computation effort needed by the interpretation function while preserving the semantics of formulas.
 In this part of the project, we therefore introduce an optimization function \texttt{optim}.
 
 \subsubsection{Minimality.}
 
-A key challenge was formally defining what a simplification is and what property the result of \texttt{optim} should have.
+A key challenge was formally defining what a simplification is and what properties the result of \texttt{optim} should have.
+A \emph{simplification} reduces selected applications of the binary operators $\land$, $\lor$ and $\rightarrow$ to one of their two arguments or an \emph{atom}, i.e., the boolean values \texttt{true} and \texttt{false}. 
+Additionally, when applied to an atom, the unary operation $\neg$ can be simplified to the opposite atom.
 
-A \emph{simplification} reduces the applications of the binary operators $\land$, $\lor$ and $\rightarrow$ to one of their two arguments or an \emph{atom}, i.e., the boolean values \texttt{true} and \texttt{false}. 
-Additionally, when applied to an atom, the unary operation $\neg$ can be simplified to an atom.
-
-The aim is to leave a formula $p$ in a form that cannot be simplified further on a syntactical level.
-We assume this to be the case in exactly two mutually exclusive situations:
+The aim is to leave a formula $p$ in one of two mutually exclusive shapes:
 \begin{itemize}
     \item $p$ is an atom, or
     \item $p$ does not contain any atoms.
 \end{itemize}
-When one of the situations applies, we say $p$ is in \emph{minimal form}. Formalizing this definition in \textsc{Coq}, we require either a fixpoint returning \texttt{true} if and only if a formula does not contain atoms or an inductive proposition.
-While we initially opted for a fixpoint, proving the correctness of our optimizer later turned out easier with an inductive proposition. 
-A formula does not contain an atom if it is an identifier or if all its subformulas do not contain atoms.
+When one of the situations applies, we say $p$ is in \emph{minimal form}. 
+As we will later see, this does not necessarily mean that a formula cannot be simplified further on a syntactic level, even though these phenomena sometimes coincide.
+Formalizing this definition in \textsc{Coq}, we require either a fixpoint returning \texttt{true} if and only if a formula does not contain atoms or an inductive proposition.
+Either way, both options should reflect that a formula does not contain an atom if it is an identifier or all its subformulas do not contain atoms. 
+While we initially opted for a fixpoint, proving the correctness of our optimizer later turned out easier with an inductive proposition.
 
-We settle on a set of laws that our optimizer uses and allow it to fulfill the above-mentioned correctness and minimality requirements:
-\begin{alignat}{4}
+We settle on a set of laws to fulfill the above-mentioned correctness and minimality requirements:
+\begin{alignat*}{4}
     \texttt{true} \land p &\equiv p &p \land \texttt{true} &\equiv p &\texttt{false} \land p &\equiv \texttt{false}\hspace*{20pt}&p \land \texttt{false} &\equiv \texttt{false} \\
     \texttt{true} \lor p &\equiv \texttt{true}\hspace*{20pt}&p \lor \texttt{true} &\equiv \texttt{true}\hspace*{20pt}&\texttt{false} \lor p &\equiv p &p \lor \texttt{false} &\equiv p \\
     \texttt{true} \rightarrow p &\equiv p &p \rightarrow \texttt{true} &\equiv \texttt{true} &\texttt{false} \rightarrow p &\equiv \texttt{true} &p \rightarrow \texttt{false} &\equiv \neg p \\
     &&\neg \texttt{true} &\equiv \texttt{false} &\neg \texttt{false} &\equiv \texttt{true}
-\end{alignat}
-
-Note that we leave out some further simplification potential. 
-For improved provability, we only concentrate on laws involving at least one atom.
-One could also go beyond and, e.g., add laws such as $p \land \neg p \equiv \texttt{false}$ for an arbitrary formula $p$ to this set.
+\end{alignat*}
+Note that we leave out further simplification potential: we concentrate on laws involving at least one atom for improved provability.
+One could also go beyond and, e.g., add laws such as $p \land \neg p \equiv \texttt{false}$ for an arbitrary formula $p$.
 
 \subsubsection{Implementation.}
 
 The actual implementation of the optimizer in \textsc{Coq} requires a bit of thought.
-Indeed, our first implementation attempt was a top-down traversal of the abstract syntax tree of the given formula and successive application of the listed simplifications.
-However, this misses some optimization potential as it may only become available after optimizing subformulas.
+Indeed, our first implementation attempt was a top-down traversal of the abstract syntax tree of a given formula and successive application of the listed simplifications.
+However, this is not minimizing as some simplifications may only become available after optimizing subformulas.
 To try and remedy this, we wrote a recursive function repeatedly applying \texttt{optim} on a formula until reaching a fixpoint.
-While a fixpoint is eventually reached in practice, \textsc{Coq} cannot know and rejects the function as new arguments to \texttt{optim} are not obviously smaller.
+While a fixpoint is eventually reached in practice, \textsc{Coq} rejects the function as new arguments are not obviously smaller.
 
 \begin{figure}[t]
     \centering
@@ -109,14 +108,14 @@ While a fixpoint is eventually reached in practice, \textsc{Coq} cannot know and
 
 Instead, our revised approach only traverses the passed formula once and hence only requires linear runtime.
 We achieve this by performing a post-order depth-first-search (DFS) on the abstract syntax tree of the passed formula.
-This way, optimizations of subformulas are directly taken into account.
-Even though sometimes it is sufficient to simplify only one or even no subformula, we always traverse the whole tree for easier proving of the required properties.
+This way, simplified subformulas are directly taken into account.
+Even though it is occasionally sufficient to simplify only one or even no subformula, we always traverse the whole tree for easier proving of the required properties.
 Figure \ref{fig:optimizer} illustrates such a case, where for the formula $x \land (\texttt{false} \land (z \lor \texttt{true}))$, the subformula $z \lor \texttt{true}$ is simplified to \texttt{true} first, even though $\texttt{false} \land (z \lor \texttt{true})$ could directly be simplified to \texttt{false} from the get-go.
-Note, however, that the formula is translated to \texttt{false} without even running the interpreter just by its syntax.
+Note, however, that the formula is translated to \texttt{false} without even running the interpreter just by observing its syntax.
 
 \subsubsection{Properties.}
 
-To close off this section, we must formally verify that our optimizer truly meets its requirements.
+To close this section on \texttt{optim}, we must formally verify that our optimizer truly meets its requirements.
 First and foremost, the following theorem holds:
 \begin{theorem}
     For all valuations $v$ and formulas $p$, $\texttt{interp}\;v\;p = \texttt{interp}\;v\;(\texttt{optim}\;p)$, i.e., the optimizer is correct since it preserves the semantics of formulas.
@@ -126,39 +125,31 @@ First and foremost, the following theorem holds:
     The non-trivial cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$ and $p = q_1 \rightarrow q_2$ are all shown by case distinction on $\texttt{optim}\;q_1$ and $\texttt{optim}\;q_2$ and application of the induction hypotheses claiming the optimizer is correct for $q_1$ and $q_2$.
     $p = \neg q$ follows the same pattern for a single subformula $q$. \qed
 \end{proof}
-The main challenges for formally proving this theorem in \textsc{Coq} do not lie in the reasoning but rather in removing redundancies.
-Consequently, as for many other proofs of the project, we decided to first write a mostly manually written version before looking out for automation potential.
-In a final step, we filtered out common patterns through custom tactics through the \texttt{Ltac} language. 
+The main challenges for formally proving this theorem in \textsc{Coq} do not lie in the reasoning but in removing redundancies.
+Consequently, as for many other proofs, we wrote a mostly manual version before looking for automation potential.
+In a final step, we filtered out common patterns through custom \texttt{Ltac} tactics. 
 
-We also prove this second theorem to show our optimizer is actually exhaustive:
+We also prove this second theorem to show our optimizer is exhaustive:
 \begin{theorem}
     For all formulas $p$, the result of the optimizer $\texttt{optim}\;p$ is in minimal form.
 \end{theorem}
 \begin{proof}
     We proceed by induction on the structure of $p$.
-    For the cases $p = q_1 \land q_2$, $p = q_2 \lor q_2$, $p = q_1 \rightarrow q_2$ and $p = \neg q$, we perform case distinctions on the induction hypotheses (minimality of the subformulas), as well as the results of the optimizer applied to them.
+    For the cases $p = q_1 \land q_2$, $p = q_2 \lor q_2$, $p = q_1 \rightarrow q_2$ and $p = \neg q$, we perform case distinctions on the induction hypotheses (minimality of the subformulas), as well as their optimization results.
     If necessary, we invert the induction hypotheses involving the deconstructed optimizer results.
     Then, it follows directly from the hypotheses set that $p$ either does not contain atoms or, on the contrary, is an atom. \qed
 \end{proof}
-For this \textsc{Coq} proof, many cases are very similar, but, e.g., differ in the actual atom $p$ is equal to, reducing the potential for automation, as one must carefully introduce a fitting witness for the left branch of minimality, i.e., \texttt{exists b, p = form\_bool b}.
-Nevertheless, we factor out the recurrent patterns of deconstructing and rewriting with the induction hypotheses and destructing $\texttt{optim}\;q$ for a subformula $q$ and then inverting one of the induction hypotheses. In some rare cases, some forms are shelved in the process, requiring the use of \texttt{Unshelve}, which we were unaware of beforehand.
+In this proof, many cases are similar, but, e.g., differ in the atom $p$ is equal to, reducing the potential for automation, as one must carefully introduce a fitting witness for \texttt{exists b, p = form\_bool b}.
+Nevertheless, we factor out two recurrent patterns: deconstructing and rewriting with the induction hypotheses and destructing \texttt{optim $q$} for a subformula $q$ and then inverting one of the induction hypotheses. In rare cases, some \texttt{form}s are shelved in the process, requiring \texttt{Unshelve}, of which we were unaware beforehand.
 
 \subsection{Solver}
 
-In this section, we can finally deal with our SAT solver.
-Our idea is to collect representatives for all classes of valuations that are susceptible of satisfying a given formula and test them on the formula until one positive interpretation is found or no valuation matches.
-Indeed, only identifiers that are in a formula influence its interpretation, and we can safely map all identifiers not contained in a formula to \texttt{false} in our collected valuations:
+In this section, we can finally directly deal with our SAT solver.
+Our idea is to collect representatives for all classes of valuations susceptible of satisfying a given formula and test them on it until one positive interpretation is found or no valuation matches.
+Indeed, only identifiers contained in a formula influence its interpretation, and we can safely map all other identifiers to \texttt{false} in all collected valuations:
 \begin{lemma}
-    For any formula, two otherwise identical valuations differing in the value of an identifier that is not contained in the formula lead to an identical interpretation.
+    For any formula, two otherwise identical valuations differing in the value of an identifier that is not contained in the formula lead to the same interpretation.
 \end{lemma}
-
-Initially, we wanted to write a function that directly collects all relevant valuations for a given formula.
-While this is possible, it would have inevitably collected duplicate valuations as comparing valuations is not computable, as valuations are, in turn, functions themselves.
-Duplicate valuations can, however, lead to a significantly increased runtime of our solver in some cases.
-For instance, consider the unsatisfiable formula $x \land \neg x$.
-The initial function would collect \texttt{[$x$ !-> true ; $x$ !-> true ; empty\_valuation]}.
-We would then check the valuation \texttt{$x$ !-> true} twice, even though it does not satisfy the formula.
-Generalized to examples with many duplicate identifiers in respective subformulas, this does not scale.
 
 \begin{figure}[t]
     \centering
@@ -167,16 +158,23 @@ Generalized to examples with many duplicate identifiers in respective subformula
     \label{fig:solver}
 \end{figure}
 
-Instead, we decide to implement our solver with three individual functions.
-We name them explicitly rather than defining them as anonymous fixpoints and can hence show some detached properties in \textsc{Coq}.
+Initially, we wanted to directly collect all relevant valuations for a given formula.
+While this is possible, it would have inevitably collected duplicate valuations as comparing valuations is not computable since they are functions.
+Duplicate valuations can, however, lead to a significantly increased runtime of our solver in several cases.
+For instance, consider the unsatisfiable formula $x \land \neg x$.
+Our initial function would collect \texttt{[($x$ !-> true); ($x$ !-> tru)e; empty\_valuation]}.
+We would then check the valuation \texttt{$x$ !-> true} twice, even though it does not satisfy the formula.
+Generalized to examples with many duplicate identifiers in respective subformulas, this does not scale.
+Instead, we implement our solver with three individual functions.
+We name them explicitly rather than defining them as anonymous fixpoints and can hence show detached properties in \textsc{Coq}.
 Throughout this section, we will use the formula $(((x \rightarrow \neg y) \lor (x \land \neg x)) \land (y \land z)) \land \texttt{true}$ as running example to illustrate the solving steps as depicted in figure \ref{fig:solver}.
 
 \subsubsection{Extracting Identifiers.}
 
-To tackle the above-mentioned problem, we provide a dedicated recursive function \texttt{collect\_ids} that collects all identifiers of a formula without duplicates (compare example in figure \ref{fig:solver}).
+To tackle the problem mentioned above, we provide a dedicated recursive function \texttt{collect\_ids} that gathers all identifiers of a formula without duplicates (compare figure \ref{fig:solver}).
 
 \begin{figure}[t]
-    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,label=lst:ids_union,caption=Custom duplicate free list merging function.]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,label=lst:ids_union,caption=Custom duplicate-free list merging function.]
 Fixpoint ids_union (l1 l2 : list id) : list id :=
   match l1 with
   | [] => l2
@@ -186,13 +184,13 @@ Fixpoint ids_union (l1 l2 : list id) : list id :=
 \end{figure}
 
 We wanted the result of the function to be a finite set but did not find a standard library implementation that fully corresponded to our expectations.
-Thus, we first decided to return a list and take care ourselves to not include any duplicates.
-The abandoned implementation of a function merging the lists of collect identifiers of two subformulas without duplicates can be found in listing \ref{lst:ids_union}.
-We formally proved that elements included in either \texttt{l1} or \texttt{l2} are all kept in the result, that any element of the result is originally contained in \texttt{l1} or \texttt{l2}, and that if \texttt{NoDup l1} and \texttt{NoDup l2}, then \texttt{NoDup (ids\_union l1 l2)} holds.
+Thus, we decided at first to return a list and take care of not including duplicates ourselves.
+The abandoned implementation of a function merging the lists of collect identifiers of two subformulas duplicate-free can be found in listing \ref{lst:ids_union}.
+We formally proved that elements included in either \texttt{l1} or \texttt{l2} are all kept in the result, that any element of the result is initially contained in \texttt{l1} or \texttt{l2}, and that if \texttt{NoDup l1} and \texttt{NoDup l2}, then \texttt{NoDup (ids\_union l1 l2)} holds.
 
 After some deeper search through the standard library, we, in the end, opted for the finite set implementation provided in \texttt{Coq.Lists.ListSet}\footnote{\url{https://coq.inria.fr/doc/v8.9/stdlib/Coq.Lists.ListSet.html}}.
-Even though it does not hide many implementation details, it comes with some predefined set manipulation operations and some lemmas about its properties, which would not have justified a similar custom re-implementation.
-To confirm it matches our expectations, we show that \texttt{set\_add} behaves as the identity function if we try adding an identifier $x$ to a set that already contains it and that it behaves as an append of the one-element list \texttt{[$x$]} to the end of the set, which in fact is just a list, else.
+Even though it does not hide its implementation details, it comes with predefined set manipulation operations and useful lemmas about its properties, which would not have justified a similar custom re-implementation.
+To confirm it matches our expectations, we show in \textsc{Coq} that \texttt{set\_add} behaves as the identity function if we add an identifier $x$ to a set that already contains it and that it behaves as a right-hand-side append of the one-element list \texttt{[$x$]} else.
 
 The most relevant property of \texttt{collect\_ids} is however the following:
 \begin{lemma}
@@ -207,149 +205,147 @@ The most relevant property of \texttt{collect\_ids} is however the following:
         \item The backward direction is analogous, using the fact that an identifier contained in the union of two sets is contained in at least one of the two sets. \qed
     \end{itemize}
 \end{proof}
-While the proof simply requires a case distinction on our hypothesis and applying the relevant induction hypothesis for the inductive cases, the main difficulty was finding and plugging in relevant standard library lemmas when needed, avoiding proving already known facts.
-Other than that, the formal proof contained a lot of repetition, and we were able to significantly shorten it using \texttt{Ltac} for a common pattern of deconstruction followed by application and a succession of \texttt{try} tactics.
+While the proof only requires a case distinction on our hypothesis and applying the relevant induction hypothesis for the inductive cases, the main difficulty was finding and plugging in relevant standard library lemmas when needed, avoiding proving already known facts.
+Other than that, the formal proof is repetitive, and we thus were able to significantly shorten it using \texttt{Ltac} for a common pattern of deconstruction followed by application and a succession of \texttt{try} tactics.
 
 \subsubsection{Collecting Valuations.}
 
-As we now have the ability to collect the identifiers of formulas, we need to transform identifier sets into a list of all relevant valuations that could satisfy this formula.
-We hence introduce the \texttt{collect\_vals} function.
-Its implementation maps each identifier of the passed set to \texttt{true} on top of the already collected valuations, which are already kept.
-One does not need to explicitly map identifiers to \texttt{false} since the function returns the empty valuation for the empty set, which maps all identifiers to \texttt{false}, and is hence always included in the resulting list (which we formally prove in \textsc{Coq}).
+Next, we need to transform identifier sets into lists of relevant valuations that could satisfy a formula.
+To this end, we introduce the \texttt{collect\_vals} function.
+It maps each identifier of the provided set to \texttt{true} on top of already collected valuations, which are kept.
+One does not need to explicitly map identifiers to \texttt{false} since the function returns the empty valuation for the empty set and it is hence always included in the resulting list (which we formally prove in \textsc{Coq}).
 
 \begin{figure}[t]
     \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:old-collect_vals,caption=Original tail-recursive valuation collection function.]
-Fixpoint collect_vals (l : list id) (acc : list valuation) : list valuation :=
-  match l with
+Fixpoint collect_vals (ids : set id) (acc : list valuation) : list valuation :=
+  match ids with
   | [] => acc
   | x::xs => collect_vals xs ((map (fun v => x !-> true ;; v) acc) €\texttt{++}€ (map (fun v => x !-> false ;; v) acc))
   end.
     \end{lstlisting}
 \end{figure}
 
-Initially, we implemented a tail-recursive version of the function based on an accumulator element as depicted in listing \ref{lst:old-collect_vals}.
-When called with \texttt{[empty\_valuation]} as starting accumulator, the function yields the desired result.
-However, while this allows code optimizations as all calls to the function are last, it complicates proving properties as some assumptions on the accumulator are required.
-This illustrates the often encountered trade-off between efficiency considerations of smart implementations and proof complexity.
-Additionally, we suspected at first that explicitly mapping newly added identifiers to \texttt{false} would make some proofs easier, but the opposite turned out to be the case.
+Initially, we implemented a tail-recursive version based on an accumulator as depicted in listing \ref{lst:old-collect_vals}.
+The function yields the desired result when called with \texttt{[empty\_valuation]} as the starting accumulator.
+While all function calls being last enables code optimizations, it complicates proving properties as some assumptions on the accumulator are required.
+This illustrates the often-encountered trade-off between efficiency considerations and proof complexity.
+On another note, we suspected at first that explicitly mapping newly added identifiers to \texttt{false} would make some proofs easier, but the opposite is the case.
 
-To verify the \texttt{collect\_vals} correctly includes valuations for both truth values of every identifier contained in the passed finite set, we prove we formally prove the following lemma in \textsc{Coq}:
+To verify \texttt{collect\_vals} behaves as expected, we formally prove the following lemma in \textsc{Coq}:
 \begin{lemma}
-    For all identifier sets $S$, any $x \in S$ if and only if there exist valuations in \texttt{collect\_vals\;$S$} where $x$ is respectively mapped to \texttt{true} and \texttt{false}.
+    For all identifier sets $S$ and identifiers $x$, $x \in S$ if and only if there exist valuations in \texttt{collect\_vals $S$} where $x$ is respectively mapped to \texttt{true} and \texttt{false}.
 \end{lemma}
-A significant part of the backward direction of this lemma was proven using a custom \texttt{Ltac} tactic. 
-Still, as \texttt{Ltac} is only quickly tackled in the course, we lacked the knowledge to automatically derive witnesses from the list of assumptions.
+A significant portion of the backward direction of this lemma was proven using a custom \texttt{Ltac} tactic. 
+Still, we lacked the knowledge to automatically derive witnesses from the list of assumptions.
 
 \subsubsection{Searching Through Valuations.}
 
 \begin{figure}[t]
-    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-check_vals,caption=Alternative valuation search functions.]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€}]
 Definition check_vals (p : form) (l : list valuation) : option valuation :=
   let l' := map (fun v => if interp v p then Some v else None) l in
   match find (fun o => match o with Some _ => true | None => false end) l' with
   | Some o => o
   | None => None
   end.
-
-Definition check_vals' (p : form) (l : list valuation) : bool :=
+    \end{lstlisting}
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-check_vals,caption=Alternative valuation search functions.]
+Definition check_vals (p : form) (l : list valuation) : bool :=
   existsb (fun b => b) (map (fun v => interp v p) l).
     \end{lstlisting}
 \end{figure}
 
-The final solving step performed by \texttt{check\_vals} is to search through a list of valuations $l$ and return \texttt{Some $v$} if $v$, contained in $l$, satisfies the formula $p$.
+The final solving step performed by \texttt{check\_vals} is to search through a list of valuations $l$ and return \texttt{Some $v$} if the valuation $v$, contained in $l$, satisfies the formula $p$.
 It returns \texttt{None} if no valuation matches.
-One considered option was to use the library function \texttt{map} to interpret all collected valuations on a formula, and then either \texttt{find} a matching valuation or, if the actually found valuation does not matter, return the first found \texttt{true} in the altered list.
+One considered option was to use the library function \texttt{map} to call \texttt{interp} on all collected valuations and $p$, and then either \texttt{find} a matching valuation or, if it does not matter, return the first found \texttt{true} in the altered list.
 Two possible implementations are shown in listing \ref{lst:alt-check_vals}.
-Even though we avoid explicitly writing pattern matching and recursion, these options are both less efficient -- \texttt{interp} is applied to all valuations, not just the first satisfying the formula -- and complicate proofs, especially improving reliance on standard library lemmas.
-Consequently, in our final version of the function, we just recurse over the list of valuations until the first match, which is returned.
+Even though we avoid explicitly writing pattern matching and recursion on $l$, these options are both less efficient: \texttt{interp} is applied to all valuations, not just the first satisfying the formula.
+It also complicates proofs, especially increasing reliance on standard library lemmas.
+Consequently, in our final version of the function, we recurse over the list of valuations until the first match, which is returned.
 Later valuations are not considered, as illustrated by our running example in figure \ref{fig:solver}.
 
-Putting it all together, the function \texttt{find\_valuation} accepts a formula $p$ and returns the result of the successive applications of \texttt{optim}, \texttt{collect\_ids}, \texttt{collect\_vals}, and \texttt{check\_vals}.
-Note that in the worst case, \texttt{find\_valuation} searches through all relevant valuations if no valuation satisfies the formula, leading to a worst-case complexity of $\mathcal{O}(n^2)$ with $n$ being the number of identifiers contained in the formula.
-Indeed, this makes sense as \textbf{NP} $\subseteq$ \textbf{EXPTIME}. % TODO: rethink this
+Putting everything together, the function \texttt{find\_valuation} takes a formula $p$ as parameter and returns the result of the successive applications of \texttt{optim}, \texttt{collect\_ids}, \texttt{collect\_vals}, and \texttt{check\_vals}.
+Note that in the worst case, it searches through all relevant valuations if none satisfies the formula, leading to a worst-case complexity of $\mathcal{O}(n^2)$, $n$ being the number of identifiers contained in the formula.
 
-The function \texttt{solver} then connects the result of \texttt{find\_valuation} to booleans, i.e., returns \texttt{true} for \texttt{Some $v$} and \texttt{false} for \texttt{None}.
-In other words, \texttt{solver} is a \emph{decision procedure} \cite{kroening2016decision} for the boolean satisfiability problem.
-This means \texttt{solver} is an algorithm that, given a concrete formula $p$, can always answer the problem by yes (\texttt{true}) if $p$ is satisfiable, and by no (\texttt{false}) if it is not satisfiable.
+The function \texttt{solver} connects the result of \texttt{find\_valuation} to booleans: it returns \texttt{true} for \texttt{Some $v$} and \texttt{false} for \texttt{None}.
+In other words, \texttt{solver} is a \emph{decision procedure} \cite{kroening2016decision} for SAT, i.e., it is an algorithm that, given a concrete formula $p$, can always answer to the problem by yes (\texttt{true}) if $p$ is satisfiable and by no (\texttt{false}) if not.
 We will deal with the formal proof of this claim in the remainder of this subsection.
 
 \subsubsection{Soundness.}
 
-First, we need to show that \texttt{solver} has no false positives, i.e., does not falsely claim a formula to be satisfiable that is not.
+First, we need to show that \texttt{solver} does not falsely claim formulas to be satisfiable that are not.
 This gives rise to the \emph{soundness} lemma:
 \begin{lemma}
     For all formulas $p$, if \texttt{solver $p$} returns \texttt{true}, then $p$ is satisfiable.
 \end{lemma}
 \begin{proof}
-    Assume \texttt{solver $p$} to return \texttt{true}.
+    Assume \texttt{solver $p$} returns \texttt{true}.
     This is only the case when \texttt{find\_valuation $p$} returns \texttt{Some $v$}.
-    We show by induction on the length of the list $l =$ \texttt{collect\_vals (collect\_ids (optim $p$))} that \texttt{interp $v$ (optim $p$)} is true, from which our claim directly follows as \texttt{optim} is semantics-preserving and $v$ is our witness for the satisfiability of $p$.
+    We will show by induction on the structure of the list $l :=$ \texttt{collect\_vals (collect\_ids (optim $p$))} that \texttt{interp $v$ (optim $p$)} is true, from which our claim directly follows as \texttt{optim} is semantics-preserving.
     \begin{itemize}
         \item Base case: if $l = \texttt{[]}$, \texttt{find\_valuation $p$} must be \texttt{None}, a contradiction with our hypothesis.
-        \item Inductive step: let $l = \texttt{$v'$::$vs$}$ and our induction hypothesis be \texttt{check\_vals (optim $p$) vs = Some $v \Longrightarrow$ interp $v$ $p$ = true}.
+        \item Inductive step: let $l = \texttt{$v'$::$vs$}$.
+        Our induction hypothesis claims that \texttt{check\_vals (optim $p$) vs = Some $v \Longrightarrow$ interp $v$ $p$ = true}.
         If \texttt{interp $v'$ $p$ = true}, then $v' = v$, and thus \texttt{find\_valuation $p$} returns \texttt{Some $v$}.
-        Otherwise, we can apply our induction hypothesis and our goal immediately follows from our hypothesis. \qed
+        Otherwise, our claim follows from our induction hypothesis and our hypothesis. \qed
     \end{itemize}
 \end{proof}
 This can be concisely formalized in \textsc{Coq}.
-One needs to perform some careful unfoldings while not revealing the inner parts of \texttt{solver}: it is irrelevant which valuation is returned, just that some valuation is returned.
-Only then should the induction be performed.
+One needs to perform careful unfoldings while not revealing the inner parts of \texttt{solver}: it is irrelevant which valuation is returned, just that some is.
 
 \subsubsection{Completeness.}
 
 Showing the completeness of \texttt{solver} was the most challenging part of the project, which we unfortunately did not fully manage to wrap up.
-Indeed, one cannot blindly apply induction as the hypothesis is not directly usable to prove the lemma, and it took us a lot of time to figure out a coherent reasoning, writing a lot of later unused and removed helper lemmas.
+Indeed, one cannot blindly use induction to prove it as the satisfiability hypothesis is not directly usable.
+It took us a lot of time to figure out a coherent reasoning, writing a lot of later unused and removed helper lemmas.
 
-The hypothesis that a formula $p$ is satisfiable means a valuation $v$ exists such that \texttt{interp $v$ $p$} is \texttt{true}.
+Assuming a formula $p$ to be satisfiable means a valuation $v$ exists such that \texttt{interp $v$ $p$} is \texttt{true}.
 However, it is in no way guaranteed that this is the valuation that will be found by \texttt{find\_valuation}.
-In fact, it cannot be shown at all that this valuation will be found as our solver only looks at a subset of all valuations.
 The problem has its roots in valuations being total maps.
 For instance, let $v$ satisfy the formula $x \lor y$.
 It is perfectly possible for $v$ to map an identifier $z$ not contained in the formula to \texttt{true} as this does not influence the formula's interpretation.
-This consequently means our solver will not consider this exact $v$, as all uncontained identifiers are mapped to \texttt{false}.
-
+In fact, our solver will not consider this exact $v$, as all uncontained identifiers are mapped to \texttt{false}.
 Consequently, we first have to deduce our solver will consider some \emph{equivalent} $v'$.
 This requires a formalization of the notion of equivalence first:
 \begin{lemma}\label{lem:interp_eq}
     For all valuations $v$, $v'$, and formulas $p$, if $v$ and $v'$ map all identifiers contained in $p$ to the same value, then the interpretation of $p$ under the context of these two valuations is identical.
 \end{lemma}
 The main difficulty for this lemma does not lie in its proof, which can be performed by induction on $p$, but in the careful translation of this statement in \textsc{Coq}.
-One needs to note that
+One needs to notice that
 \begin{lstlisting}[language=coq]
 forall (v v' : valuation) (p : form) (x : id),
     (id_in_form x p = true -> v x = v' x) -> interp v p = interp v' p
 \end{lstlisting}
 only means $v$ and $v'$ correspond in a single identifier, which naturally does not imply their interpretations to be identical.
-We rather need to nest the universal quantifier for $x$ as follows:
+We rather need to nest the universal quantifier for $x$:
 \begin{lstlisting}[language=coq]
 forall (v v' : valuation) (p : form),
     (forall (x : id), id_in_form x p = true -> v x = v' x) -> interp v p = interp v' p
 \end{lstlisting}
-This nesting is, however, what will later lead our reasoning for the correctness proof not to be formalizable in \textsc{Coq}.
+However, this nesting will later cause our reasoning not to be formalizable in \textsc{Coq}.
 
 Now, we want to prove that \texttt{find\_valuation} will truly consider a valuation $v'$ equivalent to the known satisfying valuation $v$:
 \begin{lemma}\label{lem:collect_equiv_v}
     For all valuations $v$ and formulas $p$, there exists a valuation $v'$ such that $v$ and $v'$ map all identifiers contained in $p$ to the same value and $v'$ is in \texttt{collect\_vals (collect\_ids $p$))}.
 \end{lemma}
-To formally show this in \textsc{Coq}, we first have to prove that \texttt{collect\_vals} preserves valuations when performing the union of identifier sets, i.e., if a valuation is contained in \texttt{collect\_vals $S$}, then it is also contained in \texttt{collect\_vals (id\_set\_union $S$ $S'$)} and in \texttt{collect\_vals (id\_set\_union $S'$ $S$)} for some second set $S'$.
+To formally show this in \textsc{Coq}, we first have to prove that \texttt{collect\_vals} preserves valuations when performing the union of identifier sets, i.e., that if a valuation is contained in \texttt{collect\_vals $S$}, then it is also contained in \texttt{collect\_vals (id\_set\_union $S$ $S'$)} and in \texttt{collect\_vals (id\_set\_union $S'$ $S$)} for some second set $S'$.
 Additionally, we also show that arbitrary combinations of valuations $v \in S$ and $v' \in S'$ are contained in \texttt{collect\_vals (id\_set\_union $S$ $S'$)}.
-This illustrates the structure of how \texttt{collect\_vals} constructs all necessary valuations.
-These lemmas are all shown by induction on the second set applied to \texttt{id\_set\_union} as this is the argument it recurses on.
+These lemmas are shown by induction on the second set applied to \texttt{id\_set\_union} as this is the argument it pattern matches on.
 We also have to be careful and keep our induction hypotheses as general as possible and not introduce valuations too early.
-Therefore, we make use of \texttt{generalize dependent} before using the \texttt{induction} tactic.
+Therefore, we use \texttt{generalize dependent} before using the \texttt{induction} tactic.
 
-We tried proving lemma \ref{lem:collect_equiv_v} by induction on $p$.
-The problem we face for the cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$, and $p = q_1 \rightarrow q_2$, is that to know which of the two induction hypotheses to apply, we would have to introduce an arbitrary but fixed identifier $x$ and distinguish if it is contained in $q_1$ or $q_2$.
-However, this cannot be done in \textsc{Coq} as the universal quantifier for $x$ is nested.
-Consequently, $x$ cannot be introduced without explicitly providing a witness for $v'$ beforehand, but the proper choice, in turn, depends on the case distinction.
+We then tried proving lemma \ref{lem:collect_equiv_v} by induction on $p$.
+The problem we face for the cases $p = q_1 \land q_2$, $p = q_1 \lor q_2$, and $p = q_1 \rightarrow q_2$ is that to know which of the two induction hypotheses to apply, we would have to introduce an arbitrary but fixed identifier $x$ and distinguish if it is contained in $q_1$ or $q_2$.
+This cannot be done in \textsc{Coq} as the universal quantifier for $x$ is nested.
+Consequently, $x$ cannot be introduced without explicitly providing a witness for $v'$ before, but the proper choice, in turn, depends on the case distinction.
 We tried different options to try and circumvent the problem, such as making explicit assertions.
-Using the \texttt{eexists} tactic also did not yield the wished effect since it uses the first found witness in all subsequent cases, where it does not work anymore.
-As there is no such concept as dependent witnesses, our final attempt was to shift the case distinction inside the valuation, i.e., providing 
+Using the \texttt{eexists} tactic also did not have the wished effect since it uses the first found witness in all subsequent cases, where it does not work anymore.
+As there is no such concept as dependent witnesses, our final attempt was to shift the case distinction inside the valuation by providing 
 \begin{lstlisting}[language=coq]
 fun x => if id_in_form x q1 then v1 x else if id_in_form x q2 then v2 x else empty_valuation x
 \end{lstlisting}
 as a witness and making use of one of our helper lemmas.
-Yet, \textsc{Coq} cannot unify our goal with the lemma, probably because the valuation's argument is not part of the context.
+Yet, \textsc{Coq} cannot unify our goal with the lemma, probably because the valuation function's parameter is not part of the context.
 Replacing the arbitrary booleans in the lemma with the specific condition makes the lemma unprovable.
 Therefore, we have seen ourselves forced to \texttt{admit} the concerned parts of the formal proof.
 
@@ -358,17 +354,17 @@ Admitting lemma \ref{lem:collect_equiv_v} to hold, all prerequisites are united 
     For all formulas $p$, if $p$ is satisfiable, then \texttt{solver $p$} returns \texttt{true}.
 \end{lemma}
 \begin{proof}
-    Assume $p$ to be satisfiable, i.e., there exists a valuation $v$ such that \texttt{interp $v$ $p$} is \texttt{true}.
-    By lemma \ref{lem:interp_eq} and \ref{lem:collect_equiv_v}, we know that there exists a valuation $v'$ in \texttt{collect\_vals (collect\_ids $p$)} with the same interpretation as $v$.
+    Assume $p$ to be satisfiable, i.e., that there exists a valuation $v$ such that \texttt{interp $v$ $p$} is \texttt{true}.
+    By lemmas \ref{lem:interp_eq} and \ref{lem:collect_equiv_v}, we know that there exists a valuation $v'$ in \texttt{collect\_vals (collect\_ids $p$)} with the same interpretation as $v$.
     Consequently, \texttt{interp $v'$ $p$} is true, and, as we know our optimizer to be correct, \texttt{interp $v'$ (optim $p$)} is \texttt{true} as well.
     By induction on \texttt{collect\_vals (collect\_ids (optim $p$))}, it is easy to show \texttt{solver $p$} returns \texttt{true}. \qed
 \end{proof}
 
 \begin{theorem}
-    For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable, i.e., \texttt{solver} is a decision procedure for the satisfiability problem.
+    For all formulas $p$, \texttt{solver $p$} returns \texttt{true} if and only if $p$ is satisfiable, i.e., \texttt{solver} is a decision procedure for the boolean satisfiability problem.
 \end{theorem}
 \begin{proof}
-    A direct consequence of the soundness and completeness of \texttt{solver}. \qed
+    The theorem is a direct consequence of the soundness and completeness of \texttt{solver}. \qed
 \end{proof}
 
 \subsection{Miscellaneous}
@@ -376,13 +372,16 @@ Admitting lemma \ref{lem:collect_equiv_v} to hold, all prerequisites are united 
 To close off the discussion of our project, we provide an alternative implementation strategy for our valuation collection function and describe further challenges.
 
 \begin{figure}[t]
-    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-collect_vals,caption=Alternative valuation collection function and converter.]
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€}]
 Fixpoint collect_vals (ids : set id) : list (list (id * bool)) :=
   match ids with
   | [] => [[]]
   | x::xs => let vs := collect_vals xs in map (cons (x, true)) vs €\texttt{++}€ map (cons (x, false)) vs
   end.
 
+
+    \end{lstlisting}
+    \begin{lstlisting}[language=coq,numbers=left,numberstyle=\tiny,escapeinside={€}{€},label=lst:alt-collect_vals,caption=Alternative valuation collection function and a valuation converter.]
 Fixpoint idbools_to_val (l : list (id * bool)) : valuation :=
   match l with
   | [] => empty_valuation
@@ -391,11 +390,15 @@ Fixpoint idbools_to_val (l : list (id * bool)) : valuation :=
     \end{lstlisting}
 \end{figure}
 
-Instead of explicitly collecting a list of all possible valuations, one could compute a list of lists of pairs of identifiers and truth values where a pair represents a mapping from an identifier to its value.
+Instead of explicitly collecting a list of all possible valuations, one could compute a list of lists of pairs of identifiers and truth values where pairs represent mappings from identifiers to their values.
 Then in \texttt{check\_vals}, one could not directly plug in valuations but would need to convert lists of pairs to valuations.
 Listing \ref{lst:alt-collect_vals} presents possible implementations of the described changes.
-One hope is that these changes would counteract the problems encountered when proving the completeness of \texttt{solver}: one would still have a problem with dependent witnesses but could maybe find a witness taking into account the structure of \texttt{collect\_vals} and working in all cases, as one would not have to show function equality, which is particularly difficult.
-A supposed accurate witness is \texttt{(l1 ++ filter (fun v2 => existsb (fun v1 => negb (eqb\_id (fst v1) (fst v2))) l1) l2)} for lists \texttt{l1}, \texttt{l2}, even though at first sight the inclusion of \texttt{filter} seemed problematic since the standard library does not contain appropriate lemmas.
+One hope is that these changes would counteract the problems encountered when proving the completeness of \texttt{solver}: one would still have difficulties with dependent witnesses but could maybe find a witness taking into account the structure of \texttt{collect\_vals} and working in all cases, as one would not have to show function equality.
+A supposed accurate witness is
+\begin{lstlisting}[language=coq,escapeinside={€}{€}]
+l1 €\texttt{++}€ filter (fun v2 => negb (existsb (fun v1 => eqb_id (fst v1) (fst v2)) l1)) l2
+\end{lstlisting}
+for lists \texttt{l1}, \texttt{l2}, even though at first sight, the inclusion of \texttt{filter} seems problematic since the standard library does not contain appropriate lemmas.
 Unfortunately, we did not have the time to investigate this alternative implementation strategy further.
 
 Another observation we made is that because of the great amount of lemmas we have proven, it is easy to lose track, especially for later parts of the project where we added and then discarded many propositions.
@@ -403,6 +406,6 @@ As a result, some proof scripts are more lengthy and complex than necessary.
 For example, we first proved the lemma stating that the result of \texttt{collect\_vals} is never the empty list using induction but later realized that the lemma is a corollary from an already proven lemma, namely that the empty valuation is contained in every resulting list. 
 
 The final challenge we want to elaborate on is dealing with \textsc{Coq}'s module management system, in particular the \texttt{Require}, \texttt{Import}, and \texttt{Export} commands.
-In our project's draft, we used the provided library file\footnote{\url{https://www.cs.au.dk/~spitters/project_lib.v}}. 
+In our project's draft, we used the provided library file\footnote{\url{https://www.cs.au.dk/~spitters/project_lib.v}}.
 Even though, in the end, we merged the whole project into a single file since we only used a fraction of the provided definitions of the library file, during the project's development, we encountered a multitude of unexpected behaviors, e.g., the \texttt{app} function spuriously rejecting its provided arguments.
-Hence, we tried broadening our knowledge on the matter by reading excerpts of \textsc{Coq}'s platform documentation\footnote{\url{https://coq.inria.fr/platform-docs/RequireImportTutorial.html}} as it is only sparingly covered in the course. % TODO: cite?
+Hence, we tried broadening our knowledge on the matter by reading excerpts of \textsc{Coq}'s platform-docs\footnote{\url{https://coq.inria.fr/platform-docs/RequireImportTutorial.html}}.

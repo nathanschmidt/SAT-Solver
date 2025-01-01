@@ -1,9 +1,7 @@
 \section{Introduction}\label{sec:intro}
 
 The \emph{Boolean Satisfiability Problem (SAT)} consists in determining whether, given a formula of propositional logic, there exists a valuation that satisfies it, i.e., a mapping from the unknowns of the formula to boolean values such that the formula holds. 
-Great numbers of problems in computer science can easily be reduced to SAT, and even though SAT is known to be \textbf{NP}-complete by the Cook-Levin theorem of 1971 \cite{cook1971} and its many proofs since then, there exist many efficient \emph{SAT-Solvers} for certain classes of formulas.
-
-\bigbreak
+Great numbers of problems in computer science can be reduced to SAT, and even though it is known to be \textbf{NP}-complete by the Cook-Levin theorem of 1971 \cite{cook1971} and its many proofs since then, there exist many efficient \emph{SAT solvers} for certain classes of formulas.
 
 In this project, we implement a small formally verified SAT solver for formulas containing conjunctions, disjunctions, implications, and negations with the help of the \textsc{Coq} proof assistant \cite{coq_ref_man}. 
 To that end, we start by formalizing the syntax of such formulas. 
