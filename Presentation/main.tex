@@ -1,8 +1,10 @@
 \documentclass[aspectratio=169,xcolor=dvipsnames]{beamer}
+% \setbeameroption{show notes on second screen=right} % comment out = no notes
 \usetheme[progressbar=frametitle,block=fill]{metropolis}
+
 \title{Formal Software Verification Project Presentation}
 \subtitle{SAT Solver}
-\date{January 7, 2025}
+\date{January 6, 2025}
 \author{Nathan Schmidt}
 \institute{Aarhus University}
 \titlegraphic{\includegraphics[scale=0.8]{aulogo.pdf}}
@@ -15,14 +17,7 @@
     \begin{frame}{Syntax and Semantics}
         \begin{block}{Syntax}
             $$p, q ::= x\;|\;\texttt{true}\;|\;\texttt{false}\;|\;p \land q\;|\;p \lor q\;|\;p \rightarrow q\;|\;\neg p$$
-            \vspace*{-20pt}
-            \begin{itemize}
-                \item Abstract: inductive type \texttt{form}
-                \item Concrete: \texttt{Notation}
-            \end{itemize}
         \end{block}
-
-        \pause
         
         \begin{block}{Semantics}
             \begin{itemize}
@@ -30,6 +25,11 @@
                 \item Interpreter $\texttt{interp} : \texttt{valuation} \times \texttt{form} \rightarrow \texttt{bool}$
             \end{itemize}
         \end{block}
+
+        \note{\begin{itemize} \LARGE
+            \item Formalize syntax and semantics
+            \item Interpretation function takes valuation (= total map)
+        \end{itemize}}
     \end{frame}
 
     \begin{frame}{Simplifications}
@@ -39,12 +39,17 @@
             \texttt{true} \rightarrow p &\equiv p &p \rightarrow \texttt{true} &\equiv \texttt{true} &\texttt{false} \rightarrow p &\equiv \texttt{true} &p \rightarrow \texttt{false} &\equiv \neg p \\
             &&\neg \texttt{true} &\equiv \texttt{false} &\neg \texttt{false} &\equiv \texttt{true}
         \end{alignat*}
+
+        \note{\begin{itemize} \LARGE
+            \item Syntactic level
+            \item Concretely: set of rules can apply
+            \item Always at least one atom involved, not exhaustive
+        \end{itemize}}
     \end{frame}
 
     \begin{frame}{Optimizer}
         \begin{columns}
             \column{0.45\textwidth} \begin{itemize}
-                \item Syntax-driven
                 \item Depth-First-Search (DFS):
                 \begin{itemize}
                     \item[\textbf{X}] Pre-order: no obviously decreasing arguments
@@ -53,32 +58,43 @@
             \end{itemize}
             \column{0.55\textwidth}
             \begin{minipage}[t][\textheight][t]{\textwidth}
-                \only<2>{\includegraphics{figures/optimizer1.pdf}}
-                \only<3>{\includegraphics{figures/optimizer2.pdf}}
-                \only<4>{\includegraphics{figures/optimizer3.pdf}}
-                \only<5>{\hspace*{32pt}\includegraphics{figures/optimizer4.pdf}}   
+                \only<1>{\includegraphics{figures/optimizer1.pdf}}
+                \only<2>{\includegraphics{figures/optimizer2.pdf}}
+                \only<3>{\includegraphics{figures/optimizer3.pdf}}
+                \only<4>{\hspace*{32pt}\includegraphics{figures/optimizer4.pdf}}   
             \end{minipage}
         \end{columns}
+
+        \note{\begin{itemize} \LARGE
+            \item DFS
+            \item Apply top-up $\Rightarrow$ cannot because of \textsc{Coq}
+            \item Instead, easier and in one go: bottom-up
+            \item See result on example formula: \texttt{false}
+        \end{itemize}}
     \end{frame}
 
-    \begin{frame}{Optimizer Correctness and Minimality}
-        \begin{block}{Correctness}
-            \textbf{Theorem.}\hspace*{8pt}\emph{$\forall\,v, p : \texttt{interp}\;v\;p = \texttt{interp}\;v\;(\texttt{optim}\;p)$}
+    \begin{frame}{Optimizer Minimality and Correctness}
+        \begin{block}{Minimality}
+            \begin{itemize}
+                \item \textbf{Theorem.}\hspace*{8pt}\emph{\texttt{optim $p$} always in minimal form}
+                \item $p$ in \alert{minimal form}:
+                    \begin{itemize}
+                        \item if $p = \texttt{true}$/\texttt{false}, or
+                        \item \texttt{true}/\texttt{false} $\notin p$
+                    \end{itemize}
+            \end{itemize}
         \end{block}
 
         \pause
 
-        \begin{block}{Minimality}
-            \begin{itemize}
-                \item $p$ in \alert{minimal form}:
-                    \begin{itemize}
-                        \item if $p = \texttt{true}$/\texttt{false}, or
-                        \item \texttt{true}/\texttt{false} $\notin p \pause \leadsto$ inductive predicate
-                    \end{itemize}
-                \pause
-                \item \textbf{Theorem.}\hspace*{8pt}\emph{\texttt{optim $p$} always in minimal form}
-            \end{itemize}
+        \begin{block}{Correctness}
+            \textbf{Theorem.}\hspace*{8pt}\emph{$\forall\,v, p : \texttt{interp}\;v\;p = \texttt{interp}\;v\;(\texttt{optim}\;p)$}
         \end{block}
+
+        \note{\begin{itemize} \LARGE
+            \item Other case: reduced so much only ids left
+            \item Optimizer preserves semantics
+        \end{itemize}}
     \end{frame}
 
     \begin{frame}{Solver}
@@ -98,6 +114,14 @@
                 \onslide<6->{\path[->] (step5) edge node[midway, right]{\texttt{solver}} (step6);}
             \end{tikzpicture}}
         \end{center}
+
+        \note{\begin{itemize} \LARGE
+            \item Can just solve optimized formula, no difference
+            \item Need collect all vals combinations of contained ids
+            \item To not check multiple times, collect ids duplicate-free
+            \item Check brute-force until match or no match
+            \item \texttt{true} iff some val with interp \texttt{true} for form
+        \end{itemize}}
     \end{frame}
 
     \begin{frame}{Solver Soundness and Completeness}
@@ -123,6 +147,13 @@
                 \end{itemize}
             \end{itemize}
         \end{block}
+
+        \note{\begin{itemize} \LARGE
+            \item No false positives: inner workings of \texttt{solver} irrelevant
+            \item No false negatives: difficult as H not directly usable
+            \item Two lemmas
+            \item Problem with witness for $p = q_1\,\square\,q_2$, can't destruct as \texttt{exists} $<$ \texttt{forall}, can't give generally valid witness
+        \end{itemize}}
     \end{frame}
 
     \begin{frame}{Solver Decision Procedure}
@@ -135,5 +166,7 @@
         \begin{center}
             \Large i.e., \texttt{solver} decision procedure for SAT
         \end{center}
+
+        \note{\LARGE If assume also completeness, \texttt{solver} decision procedure}
     \end{frame}
 \end{document}
